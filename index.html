@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PyCloud — Python in your browser</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#"><span class="brand-mark">py</span><span><strong>PyCloud</strong><small>PYTHON IN YOUR BROWSER</small></span></a>
+      <div class="top-actions"><span id="runtime-status" class="status loading"><i></i> Connecting to Python...</span><button id="share-button" class="ghost-button">Share</button><button id="theme-button" class="icon-button" aria-label="Toggle theme">☼</button></div>
+    </header>
+    <main class="app">
+      <section class="hero"><div><p class="eyebrow">NO INSTALL. NO SETUP.</p><h1>Write Python.<br><em>Run it anywhere.</em></h1><p class="hero-copy">A friendly coding space that runs Python directly in your browser. Your code stays on this device unless you choose to share it.</p></div><div class="hero-badge"><span>●</span><div><strong>Python 3</strong><small>Powered by Pyodide</small></div></div></section>
+      <section class="workspace">
+        <aside class="examples">
+          <div class="side-head"><h2>Examples</h2><span id="example-count">4</span></div>
+          <button class="example active" data-example="hello"><span class="example-icon coral">✦</span><span><strong>Hello, world</strong><small>Print your first message</small></span><b>›</b></button>
+          <button class="example" data-example="guess"><span class="example-icon blue">?</span><span><strong>Number game</strong><small>Use input and conditions</small></span><b>›</b></button>
+          <button class="example" data-example="data"><span class="example-icon yellow">▦</span><span><strong>Work with data</strong><small>List and dictionary basics</small></span><b>›</b></button>
+          <button class="example" data-example="draw"><span class="example-icon green">⌁</span><span><strong>Make a pattern</strong><small>Loops and creativity</small></span><b>›</b></button>
+          <div class="side-tip"><strong>Tip</strong><p>Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run your code.</p></div>
+        </aside>
+        <section class="editor-column">
+          <div class="editor-head"><div><span class="file-dot"></span><strong id="file-name">hello.py</strong><span class="saved">Saved locally</span></div><div class="editor-actions"><button id="clear-button" class="small-button">Clear</button><button id="run-button" class="run-button">▶ Run code</button></div></div>
+          <div class="editor-wrap"><div class="line-numbers" id="line-numbers">1</div><textarea id="code-editor" spellcheck="false" aria-label="Python code editor"></textarea></div>
+          <div class="console-head"><span><i></i> Console</span><button id="clear-console">Clear output</button></div>
+          <pre id="console" class="console" aria-live="polite"><span class="console-muted">Your output will appear here...</span></pre>
+        </section>
+      </section>
+      <section class="features"><div><span>⚡</span><strong>Instant runtime</strong><p>Python executes in your browser with no install.</p></div><div><span>⌘</span><strong>Private by default</strong><p>Your code stays local until you share it.</p></div><div><span>♡</span><strong>Learn by doing</strong><p>Start with examples and make them your own.</p></div></section>
+    </main>
+    <div id="share-modal" class="modal hidden"><div class="modal-card"><button id="close-modal">×</button><p class="eyebrow">SHARE YOUR CODE</p><h2>Copy a link to this workspace.</h2><p>Sharing is represented locally in this prototype. Your code is ready to copy.</p><textarea id="share-text" readonly></textarea><button id="copy-button" class="run-button">Copy code</button></div></div>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
