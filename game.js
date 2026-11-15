@@ -11,6 +11,10 @@
   const FLAP_VELOCITY = -430;
   const VOICE_MIN_THRESHOLD = 0.025;
   const VOICE_REARM_QUIET_SECONDS = 0.045;
+  const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const ROOM_CODE_LENGTH = 8;
+  const PLAYER_SPACING = 64;
+  const NETWORK_SNAPSHOT_MS = 50;
 
   const canvas = document.getElementById('game-canvas');
   const context = canvas.getContext('2d');
@@ -22,6 +26,17 @@
   const voiceButton = document.getElementById('voice-toggle');
   const voiceStatus = document.getElementById('voice-status');
   const status = document.getElementById('game-status');
+  const usernameInput = document.getElementById('player-name');
+  const hostButton = document.getElementById('coop-host');
+  const joinForm = document.getElementById('coop-join-form');
+  const roomCodeInput = document.getElementById('room-code-input');
+  const roomElement = document.getElementById('coop-room');
+  const roomCodeElement = document.getElementById('room-code');
+  const roomPlayers = document.getElementById('room-players');
+  const roomStatus = document.getElementById('coop-status');
+  const copyRoomButton = document.getElementById('room-copy');
+  const coopStartButton = document.getElementById('coop-start');
+  const leaveRoomButton = document.getElementById('coop-leave');
   const gemScore = document.getElementById('gem-score');
   const courseScore = document.getElementById('course-score');
 
@@ -35,6 +50,16 @@
   }
 
   let state = 'ready';
+  let roomRole = 'solo';
+  let localUsername = '';
+  let otherUsername = '';
+  let roomCode = '';
+  let activePeer = null;
+  let roomConnection = null;
+  let roomActionPending = false;
+  let peerLibraryPromise = null;
+  let joinTimeoutId = 0;
+  let lastSnapshotAt = 0;
   let lastFrame = 0;
   let animationFrameId = 0;
   let pageIsLeaving = false;
@@ -54,7 +79,7 @@
   let gems = 0;
   let gates = [];
   let platforms = [];
-  let player = { y: 228, velocity: 0, rotation: 0 };
+  let players = [{ y: 228, velocity: 0, rotation: 0, username: 'Player 1' }];
 
   function gapSize() {
     return Math.max(138, 178 - Math.floor(score / 8) * 8);
@@ -70,7 +95,12 @@
     worldOffset = 0;
     score = 0;
     gems = 0;
-    player = { y: 228, velocity: 0, rotation: 0 };
+    players = roomRole === 'solo'
+      ? [{ y: 228, velocity: 0, rotation: 0, username: localUsername || 'Player 1' }]
+      : [
+          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? localUsername : otherUsername || 'Player 1' },
+          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? otherUsername || 'Player 2' : localUsername }
+        ];
     gates = [];
     platforms = [];
     for (let index = 0; index < 5; index += 1) {
@@ -244,12 +274,13 @@
     }
   }
 
-  function drawPlayer() {
-    const x = PLAYER_X + PLAYER_WIDTH / 2;
-    const y = player.y + PLAYER_HEIGHT / 2;
+  function drawPlayer(bird, index) {
+    const birdX = PLAYER_X + (players.length > 1 ? index * PLAYER_SPACING : 0);
+    const x = birdX + PLAYER_WIDTH / 2;
+    const y = bird.y + PLAYER_HEIGHT / 2;
     context.save();
     context.translate(x, y);
-    context.rotate(player.rotation);
+    context.rotate(bird.rotation);
     context.fillStyle = '#3e5960';
     context.beginPath();
     context.moveTo(-9, 0);
@@ -257,7 +288,7 @@
     context.lineTo(-13, 11);
     context.closePath();
     context.fill();
-    context.fillStyle = '#e89252';
+    context.fillStyle = index === 1 ? '#7488c7' : '#e89252';
     roundedRect(-17, -15, 32, 29, 10);
     context.fill();
     context.fillStyle = '#f6bc72';
@@ -272,6 +303,10 @@
     roundedRect(-13, 10, 13, 5, 2);
     context.fill();
     context.restore();
+    context.fillStyle = '#263d3d';
+    context.font = '12px sans-serif';
+    context.textAlign = 'center';
+    context.fillText(bird.username, x, bird.y - 7);
   }
 
   function draw() {
@@ -283,7 +318,7 @@
       if (!gate.gemCollected) drawGem(gate);
     }
     drawGround();
-    drawPlayer();
+    players.forEach(drawPlayer);
   }
 
   function updateScore() {
@@ -296,25 +331,42 @@
     state = 'over';
     overlayTitle.textContent = 'A breeze to try again';
     overlayCopy.textContent = `You cleared ${score} gate${score === 1 ? '' : 's'} and collected ${gems} sun gem${gems === 1 ? '' : 's'}. Ready for another flight?`;
-    startButton.textContent = 'Fly again';
+    startButton.textContent = roomRole === 'guest' ? 'Waiting for host' : 'Fly again';
+    startButton.disabled = roomRole === 'guest';
     overlay.hidden = false;
     status.textContent = `Flight over. You cleared ${score} gates and collected ${gems} gems.`;
-    startButton.focus();
+    updateStartControls();
+    if (roomRole === 'host') startButton.focus();
   }
 
-  function startGame() {
+  function startGame(isRemoteStart) {
+    if (roomRole === 'guest' && !isRemoteStart) return;
+    if (roomRole === 'host' && (!roomConnection || !roomConnection.open)) {
+      roomStatus.textContent = 'Connect the second player before starting a co-op flight.';
+      return;
+    }
     resetWorld();
     state = 'playing';
     overlay.hidden = true;
     startButton.textContent = 'Start flight';
-    status.textContent = 'You are flying. Flap through each opening and watch for the moving course.';
+    startButton.disabled = false;
+    status.textContent = players.length > 1
+      ? `${players[0].username} and ${players[1].username} are flying together. Flap through each opening!`
+      : 'You are flying. Flap through each opening and watch for the moving course.';
     canvas.focus();
     lastFrame = 0;
+    updateStartControls();
+    if (roomRole === 'host' && !isRemoteStart) {
+      sendRoomMessage({ type: 'start' });
+      sendGameSnapshot();
+    }
   }
 
   function flap() {
     if (state !== 'playing') return;
-    player.velocity = FLAP_VELOCITY;
+    const playerIndex = roomRole === 'guest' ? 1 : 0;
+    players[playerIndex].velocity = FLAP_VELOCITY;
+    if (roomRole === 'guest') sendRoomMessage({ type: 'flap' });
   }
 
   function setVoiceStatus(message) {
@@ -474,29 +526,38 @@
     }
   }
 
-  function intersectsPlayer(x, y, width, height) {
-    return PLAYER_X < x + width
-      && PLAYER_X + PLAYER_WIDTH > x
-      && player.y < y + height
-      && player.y + PLAYER_HEIGHT > y;
+  function playerX(index) {
+    return PLAYER_X + (players.length > 1 ? index * PLAYER_SPACING : 0);
+  }
+
+  function intersectsPlayer(x, y, width, height, playerIndex) {
+    const bird = players[playerIndex];
+    const xPosition = playerX(playerIndex);
+    return xPosition < x + width
+      && xPosition + PLAYER_WIDTH > x
+      && bird.y < y + height
+      && bird.y + PLAYER_HEIGHT > y;
   }
 
   function update(delta) {
     elapsed += delta;
     const speed = Math.min(350, 235 + Math.floor(score / 4) * 9);
     worldOffset += speed * delta;
-    player.velocity += GRAVITY * delta;
-    player.y += player.velocity * delta;
-    player.rotation = Math.max(-0.45, Math.min(0.7, player.velocity / 620));
+    for (const bird of players) {
+      bird.velocity += GRAVITY * delta;
+      bird.y += bird.velocity * delta;
+      bird.rotation = Math.max(-0.45, Math.min(0.7, bird.velocity / 620));
+    }
 
     for (const gate of gates) {
       gate.x -= speed * delta;
       const gapTop = gate.center - gate.gap / 2;
       const gapBottom = gate.center + gate.gap / 2;
-      if (
-        (intersectsPlayer(gate.x, 0, GATE_WIDTH, gapTop)
-          || intersectsPlayer(gate.x, gapBottom, GATE_WIDTH, GROUND_Y - gapBottom))
-      ) {
+      const hitGate = players.some((bird, index) => (
+        intersectsPlayer(gate.x, 0, GATE_WIDTH, gapTop, index)
+          || intersectsPlayer(gate.x, gapBottom, GATE_WIDTH, GROUND_Y - gapBottom, index)
+      ));
+      if (hitGate) {
         finishGame();
         return;
       }
@@ -504,9 +565,12 @@
       if (!gate.gemCollected) {
         const gemX = gate.x + GATE_WIDTH / 2;
         const gemY = gate.center + Math.sin(elapsed * 3 + gate.x) * 4;
-        const playerCenterX = PLAYER_X + PLAYER_WIDTH / 2;
-        const playerCenterY = player.y + PLAYER_HEIGHT / 2;
-        if (Math.hypot(gemX - playerCenterX, gemY - playerCenterY) < 27) {
+        const collectedByPlayer = players.some((bird, index) => {
+          const playerCenterX = playerX(index) + PLAYER_WIDTH / 2;
+          const playerCenterY = bird.y + PLAYER_HEIGHT / 2;
+          return Math.hypot(gemX - playerCenterX, gemY - playerCenterY) < 27;
+        });
+        if (collectedByPlayer) {
           gate.gemCollected = true;
           gems += 1;
           updateScore();
@@ -514,7 +578,7 @@
         }
       }
 
-      if (!gate.scored && gate.x + GATE_WIDTH < PLAYER_X) {
+      if (!gate.scored && gate.x + GATE_WIDTH < playerX(players.length - 1)) {
         gate.scored = true;
         score += 1;
         updateScore();
@@ -524,13 +588,13 @@
 
     for (const platform of platforms) {
       platform.x -= speed * delta;
-      if (intersectsPlayer(platform.x, platform.y, platform.width, platform.height)) {
+      if (players.some((bird, index) => intersectsPlayer(platform.x, platform.y, platform.width, platform.height, index))) {
         finishGame();
         return;
       }
     }
 
-    if (player.y < 0 || player.y + PLAYER_HEIGHT > GROUND_Y) {
+    if (players.some((bird) => bird.y < 0 || bird.y + PLAYER_HEIGHT > GROUND_Y)) {
       finishGame();
       return;
     }
@@ -556,11 +620,375 @@
     }
   }
 
+  function getUsername() {
+    const username = usernameInput.value.trim().slice(0, 20);
+    if (!username) {
+      roomStatus.textContent = 'Choose a username before hosting or joining a room.';
+      usernameInput.focus();
+      return '';
+    }
+    return username;
+  }
+
+  function generateRoomCode() {
+    const randomBytes = new Uint8Array(ROOM_CODE_LENGTH);
+    window.crypto.getRandomValues(randomBytes);
+    return Array.from(randomBytes, (value) => ROOM_ALPHABET[value % ROOM_ALPHABET.length]).join('');
+  }
+
+  function createPeer(peerId) {
+    const options = { host: '0.peerjs.com', port: 443, path: '/', secure: true };
+    return peerId ? new window.Peer(peerId, options) : new window.Peer(undefined, options);
+  }
+
+  function loadPeerLibrary() {
+    if (window.Peer) return Promise.resolve();
+    if (peerLibraryPromise) return peerLibraryPromise;
+    peerLibraryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
+      script.async = true;
+      script.onload = () => {
+        if (window.Peer) resolve();
+        else reject(new Error('PeerJS did not initialize.'));
+      };
+      script.onerror = () => reject(new Error('Could not load PeerJS.'));
+      document.head.append(script);
+    }).catch((error) => {
+      peerLibraryPromise = null;
+      throw error;
+    });
+    return peerLibraryPromise;
+  }
+
+  async function preparePeerAction() {
+    if (window.Peer) return true;
+    roomActionPending = true;
+    hostButton.disabled = true;
+    document.getElementById('coop-join').disabled = true;
+    roomStatus.textContent = 'Loading secure co-op networking…';
+    try {
+      await loadPeerLibrary();
+      return true;
+    } catch (error) {
+      console.error('Could not load the co-op networking library.', error);
+      roomStatus.textContent = 'The co-op library could not load. Check your internet connection or browser content-blocking settings, then try again.';
+      return false;
+    } finally {
+      roomActionPending = false;
+      if (roomRole === 'solo') {
+        hostButton.disabled = false;
+        document.getElementById('coop-join').disabled = false;
+      }
+    }
+  }
+
+  function sendRoomMessage(message) {
+    if (!roomConnection || !roomConnection.open) return false;
+    try {
+      roomConnection.send(message);
+      return true;
+    } catch (error) {
+      console.error('Could not send co-op game data.', error);
+      roomStatus.textContent = 'The room connection had a problem sending game data. Try reconnecting.';
+      return false;
+    }
+  }
+
+  function updateStartControls() {
+    if (roomRole === 'host') {
+      const canStart = Boolean(roomConnection && roomConnection.open) && state !== 'playing';
+      startButton.disabled = !canStart;
+      startButton.textContent = state === 'playing'
+        ? 'Flight in progress'
+        : canStart ? 'Start with 2 players' : 'Waiting for player…';
+      coopStartButton.disabled = !canStart;
+      coopStartButton.textContent = state === 'playing' ? 'Flight in progress' : 'Start with 2 players';
+    } else if (roomRole === 'guest') {
+      startButton.disabled = true;
+      startButton.textContent = 'Waiting for host';
+      coopStartButton.disabled = true;
+      coopStartButton.textContent = state === 'playing' ? 'Flight in progress' : 'Waiting for host';
+    } else {
+      startButton.disabled = false;
+      startButton.textContent = state === 'over' ? 'Fly again' : 'Start flight';
+      coopStartButton.disabled = true;
+      coopStartButton.textContent = 'Start with 2 players';
+    }
+  }
+
+  function setRoomBusy(isBusy) {
+    hostButton.disabled = isBusy || roomActionPending;
+    document.getElementById('coop-join').disabled = isBusy || roomActionPending;
+    usernameInput.disabled = isBusy;
+    roomCodeInput.disabled = isBusy;
+    roomElement.hidden = !isBusy;
+    leaveRoomButton.hidden = !isBusy;
+  }
+
+  function clearConnectionTimeout() {
+    if (joinTimeoutId) window.clearTimeout(joinTimeoutId);
+    joinTimeoutId = 0;
+  }
+
+  function roomSnapshot() {
+    return {
+      gameState: state,
+      elapsed,
+      worldOffset,
+      score,
+      gems,
+      gates,
+      platforms,
+      players
+    };
+  }
+
+  function sendGameSnapshot() {
+    if (roomRole === 'host') sendRoomMessage({ type: 'snapshot', snapshot: roomSnapshot() });
+  }
+
+  function applyGameSnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.players) || !Array.isArray(snapshot.gates)) return;
+    if (snapshot.gameState === 'playing' && state !== 'playing') startGame(true);
+    const wasPlaying = state === 'playing';
+    elapsed = snapshot.elapsed;
+    worldOffset = snapshot.worldOffset;
+    score = snapshot.score;
+    gems = snapshot.gems;
+    gates = snapshot.gates;
+    platforms = snapshot.platforms;
+    players = snapshot.players;
+    updateScore();
+    if (snapshot.gameState === 'over' && (wasPlaying || state !== 'over')) {
+      state = 'playing';
+      finishGame();
+    } else if (snapshot.gameState !== 'playing' && snapshot.gameState !== 'over') {
+      state = snapshot.gameState;
+    }
+    draw();
+  }
+
+  function handleRoomMessage(message) {
+    if (!message || typeof message !== 'object') return;
+    if (roomRole === 'host') {
+      if (message.type === 'hello' && typeof message.username === 'string') {
+        otherUsername = message.username.slice(0, 20);
+        if (players.length > 1) players[1].username = otherUsername;
+        roomPlayers.textContent = `${localUsername} and ${otherUsername} are in the room. Start when you’re both ready.`;
+        sendRoomMessage({ type: 'welcome', host: localUsername, guest: otherUsername });
+        sendGameSnapshot();
+      } else if (message.type === 'flap' && state === 'playing' && players.length > 1) {
+        players[1].velocity = FLAP_VELOCITY;
+      }
+      return;
+    }
+
+    if (message.type === 'start') {
+      startGame(true);
+    } else if (message.type === 'welcome') {
+      otherUsername = typeof message.host === 'string' ? message.host.slice(0, 20) : 'Host';
+      roomPlayers.textContent = `You are connected with ${otherUsername}. Waiting for the host to start.`;
+      roomStatus.textContent = `Connected to ${otherUsername}’s room. The host starts the two-player flight.`;
+    } else if (message.type === 'snapshot') {
+      applyGameSnapshot(message.snapshot);
+    } else if (message.type === 'room-full') {
+      disconnectRoom('That room already has two players. Ask the host for another room code.');
+    }
+  }
+
+  function disconnectRoom(message) {
+    clearConnectionTimeout();
+    const oldConnection = roomConnection;
+    const oldPeer = activePeer;
+    roomConnection = null;
+    activePeer = null;
+    roomRole = 'solo';
+    roomCode = '';
+    otherUsername = '';
+    if (oldConnection && oldConnection.open) oldConnection.close();
+    if (oldPeer && !oldPeer.destroyed) oldPeer.destroy();
+    setRoomBusy(false);
+    roomCodeElement.textContent = '';
+    roomPlayers.textContent = 'Waiting for a second player…';
+    coopStartButton.disabled = true;
+    updateStartControls();
+    if (state === 'playing') {
+      state = 'ready';
+      overlayTitle.textContent = 'Co-op flight ended';
+      overlayCopy.textContent = message;
+      overlay.hidden = false;
+    }
+    roomStatus.textContent = message;
+    resetWorld();
+    updateStartControls();
+  }
+
+  function failRoom(message) {
+    disconnectRoom(message);
+  }
+
+  function bindRoomConnection(connection) {
+    roomConnection = connection;
+    connection.on('open', () => {
+      clearConnectionTimeout();
+      if (roomRole === 'host') {
+        otherUsername = typeof connection.metadata?.username === 'string'
+          ? connection.metadata.username.slice(0, 20)
+          : 'Player 2';
+        resetWorld();
+        roomPlayers.textContent = `${localUsername} and ${otherUsername} are in the room. Start when you’re both ready.`;
+        roomStatus.textContent = 'Two players connected. You can start the flight now.';
+        updateStartControls();
+        sendRoomMessage({ type: 'welcome', host: localUsername, guest: otherUsername });
+      } else {
+        roomStatus.textContent = 'Room connected. Waiting for the host to start the flight.';
+        connection.send({ type: 'hello', username: localUsername });
+        startButton.disabled = true;
+        startButton.textContent = 'Waiting for host';
+      }
+    });
+    connection.on('data', handleRoomMessage);
+    connection.on('close', () => {
+      if (roomConnection !== connection) return;
+      disconnectRoom('The other player left or the connection was lost. You can host or join another room.');
+    });
+    connection.on('error', (error) => {
+      console.error('Co-op data connection error.', error);
+      if (roomConnection === connection) {
+        disconnectRoom('The room connection failed. Check your internet connection and try again.');
+      }
+    });
+  }
+
+  function handlePeerError(error) {
+    console.error('Co-op peer connection error.', error);
+    if (error.type === 'peer-unavailable') {
+      failRoom('Room not found. Check the code and ask the host to keep the room open.');
+    } else if (error.type === 'unavailable-id') {
+      failRoom('That room code is already in use. Try hosting again for a new code.');
+    } else if (error.type === 'network' || error.type === 'socket-error' || error.type === 'server-error') {
+      failRoom('Could not reach the co-op service. Check your connection and try again.');
+    } else {
+      failRoom('The co-op connection could not be created. Try again or play solo.');
+    }
+  }
+
+  async function hostRoom() {
+    if (roomRole !== 'solo' || roomActionPending) return;
+    const username = getUsername();
+    if (!username) return;
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      roomStatus.textContent = 'Secure random room codes are unavailable in this browser. Open the game over HTTPS.';
+      return;
+    }
+    if (!await preparePeerAction()) return;
+    if (roomRole !== 'solo') return;
+    localUsername = username;
+    roomRole = 'host';
+    roomCode = generateRoomCode();
+    roomCodeElement.textContent = roomCode;
+    roomPlayers.textContent = 'Waiting for a second player…';
+    roomStatus.textContent = 'Opening your room…';
+    setRoomBusy(true);
+    updateStartControls();
+    try {
+      activePeer = createPeer(roomCode);
+      activePeer.on('open', (openedId) => {
+        clearConnectionTimeout();
+        roomCode = openedId.toUpperCase();
+        roomCodeElement.textContent = roomCode;
+        roomStatus.textContent = 'Room is ready. Share the code with one friend.';
+      });
+      activePeer.on('connection', (connection) => {
+        if (roomConnection) {
+          connection.on('open', () => {
+            connection.send({ type: 'room-full' });
+            connection.close();
+          });
+          return;
+        }
+        bindRoomConnection(connection);
+      });
+      activePeer.on('error', handlePeerError);
+      joinTimeoutId = window.setTimeout(() => {
+        if (roomRole === 'host' && activePeer && !activePeer.open) {
+          failRoom('Could not reach the co-op service. Check your connection and try again.');
+        }
+      }, 15000);
+      activePeer.on('disconnected', () => {
+        if (roomRole !== 'solo') roomStatus.textContent = 'Connection to the co-op service was interrupted. Reconnect or leave the room.';
+      });
+    } catch (error) {
+      console.error('Could not host a co-op room.', error);
+      failRoom('Could not start hosting. Check your internet connection and try again.');
+    }
+  }
+
+  async function joinRoom() {
+    if (roomRole !== 'solo' || roomActionPending) return;
+    const username = getUsername();
+    if (!username) return;
+    const code = roomCodeInput.value.trim().toUpperCase();
+    if (!new RegExp(`^[${ROOM_ALPHABET}]{${ROOM_CODE_LENGTH}}$`).test(code)) {
+      roomStatus.textContent = 'Enter the complete 8-character room code shared by the host.';
+      roomCodeInput.focus();
+      return;
+    }
+    if (!await preparePeerAction()) return;
+    if (roomRole !== 'solo') return;
+    localUsername = username;
+    roomRole = 'guest';
+    roomCode = code;
+    roomCodeElement.textContent = code;
+    roomPlayers.textContent = `Joining ${code}…`;
+    roomStatus.textContent = `Connecting to room ${code}…`;
+    setRoomBusy(true);
+    updateStartControls();
+    try {
+      activePeer = createPeer('');
+      joinTimeoutId = window.setTimeout(() => {
+        if (roomRole === 'guest' && (!activePeer || !activePeer.open || !roomConnection || !roomConnection.open)) {
+          failRoom('Could not join that room. Check the code and confirm the host is still waiting.');
+        }
+      }, 15000);
+      activePeer.on('open', () => {
+        const connection = activePeer.connect(roomCode, {
+          reliable: true,
+          metadata: { username: localUsername }
+        });
+        bindRoomConnection(connection);
+      });
+      activePeer.on('error', handlePeerError);
+      activePeer.on('disconnected', () => {
+        if (roomRole !== 'solo') roomStatus.textContent = 'Connection to the co-op service was interrupted. Try again.';
+      });
+    } catch (error) {
+      console.error('Could not join the co-op room.', error);
+      failRoom('Could not connect to that room. Check your internet connection and try again.');
+    }
+  }
+
+  async function copyRoomCode() {
+    if (!roomCode) return;
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      roomStatus.textContent = 'Room code copied. Send it to one friend to join.';
+    } catch (error) {
+      console.error('Could not copy the room code.', error);
+      roomStatus.textContent = `Copy was blocked by the browser. Share this room code manually: ${roomCode}`;
+    }
+  }
+
   function frame(timestamp) {
     const delta = lastFrame === 0 ? 0 : Math.min((timestamp - lastFrame) / 1000, 0.032);
     lastFrame = timestamp;
     detectSound(delta);
-    if (state === 'playing') update(delta);
+    if (state === 'playing' && roomRole !== 'guest') update(delta);
+    if (roomRole === 'host' && roomConnection && roomConnection.open && timestamp - lastSnapshotAt >= NETWORK_SNAPSHOT_MS) {
+      lastSnapshotAt = timestamp;
+      sendGameSnapshot();
+    }
     draw();
     animationFrameId = window.requestAnimationFrame(frame);
   }
@@ -575,8 +1003,18 @@
     event.preventDefault();
     flap();
   });
-  startButton.addEventListener('click', startGame);
+  startButton.addEventListener('click', () => startGame(false));
   flapButton.addEventListener('click', flap);
+  hostButton.addEventListener('click', hostRoom);
+  joinForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    joinRoom();
+  });
+  copyRoomButton.addEventListener('click', copyRoomCode);
+  coopStartButton.addEventListener('click', () => startGame(false));
+  leaveRoomButton.addEventListener('click', () => {
+    disconnectRoom('You left the room. You can play solo or host or join another room.');
+  });
   voiceButton.addEventListener('click', () => {
     if (audioStream) {
       releaseMicrophone(true);
@@ -591,6 +1029,9 @@
   window.addEventListener('pagehide', () => {
     pageIsLeaving = true;
     if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+    clearConnectionTimeout();
+    if (roomConnection) roomConnection.close();
+    if (activePeer && !activePeer.destroyed) activePeer.destroy();
     releaseMicrophone(false);
   });
 
