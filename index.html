@@ -3,36 +3,149 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PyCloud — Python in your browser</title>
+    <meta name="theme-color" content="#f6f5f1" />
+    <meta
+      name="description"
+      content="Get a rough, on-device age estimate from a photo or camera frame. Your image stays on your device."
+    />
+    <title>Agewise — A little age curiosity</title>
     <link rel="stylesheet" href="style.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
+    <script defer src="script.js"></script>
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="#"><span class="brand-mark">py</span><span><strong>PyCloud</strong><small>PYTHON IN YOUR BROWSER</small></span></a>
-      <div class="top-actions"><span id="runtime-status" class="status loading"><i></i> Connecting to Python...</span><button id="share-button" class="ghost-button">Share</button><button id="theme-button" class="icon-button" aria-label="Toggle theme">☼</button></div>
+      <a class="brand" href="#" aria-label="Agewise home">
+        <span class="brand-mark" aria-hidden="true">a.</span>
+        <span>agewise</span>
+      </a>
+      <div class="topbar-note"><span class="privacy-dot"></span> Private by design</div>
     </header>
-    <main class="app">
-      <section class="hero"><div><p class="eyebrow">NO INSTALL. NO SETUP.</p><h1>Write Python.<br><em>Run it anywhere.</em></h1><p class="hero-copy">A friendly coding space that runs Python directly in your browser. Your code stays on this device unless you choose to share it.</p></div><div class="hero-badge"><span>●</span><div><strong>Python 3</strong><small>Powered by Pyodide</small></div></div></section>
-      <section class="workspace">
-        <aside class="examples">
-          <div class="side-head"><h2>Examples</h2><span id="example-count">4</span></div>
-          <button class="example active" data-example="hello"><span class="example-icon coral">✦</span><span><strong>Hello, world</strong><small>Print your first message</small></span><b>›</b></button>
-          <button class="example" data-example="guess"><span class="example-icon blue">?</span><span><strong>Number game</strong><small>Use input and conditions</small></span><b>›</b></button>
-          <button class="example" data-example="data"><span class="example-icon yellow">▦</span><span><strong>Work with data</strong><small>List and dictionary basics</small></span><b>›</b></button>
-          <button class="example" data-example="draw"><span class="example-icon green">⌁</span><span><strong>Make a pattern</strong><small>Loops and creativity</small></span><b>›</b></button>
-          <div class="side-tip"><strong>Tip</strong><p>Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run your code.</p></div>
-        </aside>
-        <section class="editor-column">
-          <div class="editor-head"><div><span class="file-dot"></span><strong id="file-name">hello.py</strong><span class="saved">Saved locally</span></div><div class="editor-actions"><button id="clear-button" class="small-button">Clear</button><button id="run-button" class="run-button">▶ Run code</button></div></div>
-          <div class="editor-wrap"><div class="line-numbers" id="line-numbers">1</div><textarea id="code-editor" spellcheck="false" aria-label="Python code editor"></textarea></div>
-          <div class="console-head"><span><i></i> Console</span><button id="clear-console">Clear output</button></div>
-          <pre id="console" class="console" aria-live="polite"><span class="console-muted">Your output will appear here...</span></pre>
-        </section>
+
+    <main>
+      <section class="intro">
+        <div class="intro-copy">
+          <p class="eyebrow">A LITTLE AGE CURIOSITY</p>
+          <h1>How old do<br />you <em>look?</em></h1>
+          <p class="intro-text">
+            A playful, approximate estimate from a face in a photo. No identity,
+            no judgement—just a rough guess from an on-device model.
+          </p>
+          <div class="model-status" id="model-status" role="status" aria-live="polite">
+            <span class="status-indicator"></span>
+            <span id="model-status-text">Preparing the on-device model…</span>
+            <button id="retry-model-button" class="model-retry" type="button" hidden>Retry</button>
+          </div>
+        </div>
+        <div class="intro-art" aria-hidden="true">
+          <div class="sun"></div>
+          <div class="art-card">
+            <span class="art-sparkle sparkle-one">✳</span>
+            <span class="art-sparkle sparkle-two">✦</span>
+            <div class="portrait">
+              <div class="portrait-hair"></div>
+              <div class="portrait-face">
+                <span class="eye eye-left"></span>
+                <span class="eye eye-right"></span>
+                <span class="nose"></span>
+                <span class="smile"></span>
+              </div>
+              <div class="portrait-neck"></div>
+              <div class="portrait-shirt"></div>
+            </div>
+            <span class="art-caption">just for fun</span>
+          </div>
+          <span class="art-orbit orbit-one"></span>
+          <span class="art-orbit orbit-two"></span>
+        </div>
       </section>
-      <section class="features"><div><span>⚡</span><strong>Instant runtime</strong><p>Python executes in your browser with no install.</p></div><div><span>⌘</span><strong>Private by default</strong><p>Your code stays local until you share it.</p></div><div><span>♡</span><strong>Learn by doing</strong><p>Start with examples and make them your own.</p></div></section>
+
+      <section class="estimator" aria-labelledby="estimator-heading">
+        <div class="estimator-heading">
+          <div>
+            <p class="eyebrow">YOUR PHOTO, YOUR DEVICE</p>
+            <h2 id="estimator-heading">Ready when you are</h2>
+          </div>
+          <button id="reset-button" class="text-button" type="button">Reset</button>
+        </div>
+
+        <div class="estimator-grid">
+          <div class="controls">
+            <div class="input-options">
+              <label class="upload-button" for="image-input">
+                <span class="upload-icon" aria-hidden="true">↑</span>
+                <span><strong>Choose a photo</strong><small>JPG, PNG, WEBP · up to 15 MB</small></span>
+              </label>
+              <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" />
+              <div class="option-divider"><span>or</span></div>
+              <label class="consent-row" for="camera-consent">
+                <input id="camera-consent" type="checkbox" />
+                <span>
+                  I agree to turn on my camera when I press the button below.
+                  It will only be used for this estimate.
+                </span>
+              </label>
+              <button id="camera-button" class="camera-button" type="button" disabled>
+                <span aria-hidden="true">◎</span> Start camera
+              </button>
+            </div>
+
+            <div class="privacy-card">
+              <span class="privacy-lock" aria-hidden="true">⌑</span>
+              <div>
+                <strong>Your image stays here</strong>
+                <p>
+                  Photos and camera frames are processed in this tab only. They
+                  are never uploaded or saved. The model is downloaded from a
+                  public CDN; only model files—not your image—are requested.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-column">
+            <div class="preview-stage" id="preview-stage">
+              <div class="empty-state" id="empty-state">
+                <div class="frame-icon" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                  <div class="frame-sun"></div><div class="frame-hill"></div>
+                </div>
+                <strong>Your preview will appear here</strong>
+                <span>Choose a photo or start your camera to begin.</span>
+              </div>
+              <img id="image-preview" alt="Selected photo preview" hidden />
+              <video id="camera-preview" autoplay muted playsinline hidden></video>
+              <div id="preview-label" class="preview-label" hidden></div>
+            </div>
+            <div class="action-row">
+              <p class="preview-hint" id="preview-hint">One face works best, with good light.</p>
+              <button id="analyze-button" class="analyze-button" type="button" disabled>
+                Estimate age <span aria-hidden="true">↗</span>
+              </button>
+            </div>
+
+            <div id="result-panel" class="result-panel" aria-live="polite" hidden>
+              <div class="result-copy">
+                <span id="result-kicker" class="result-kicker">A ROUGH ESTIMATE</span>
+                <p id="result-message"></p>
+              </div>
+              <div id="age-result" class="age-result" hidden>
+                <span id="age-value"></span>
+                <small>years, approximately</small>
+              </div>
+              <button id="retry-button" class="retry-button" type="button" hidden>Try another frame</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="fine-print" aria-label="Important information">
+        <div><span>01</span><p><strong>Only an estimate</strong> Facial appearance is not a reliable way to know someone’s age. Results can be quite inaccurate.</p></div>
+        <div><span>02</span><p><strong>One face at a time</strong> For a useful result, use a clear, well-lit photo with just one face.</p></div>
+        <div><span>03</span><p><strong>Not for decisions</strong> This playful tool is not for verification, diagnosis, or any consequential use.</p></div>
+      </section>
     </main>
-    <div id="share-modal" class="modal hidden"><div class="modal-card"><button id="close-modal">×</button><p class="eyebrow">SHARE YOUR CODE</p><h2>Copy a link to this workspace.</h2><p>Sharing is represented locally in this prototype. Your code is ready to copy.</p><textarea id="share-text" readonly></textarea><button id="copy-button" class="run-button">Copy code</button></div></div>
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-    <script src="script.js"></script>
+
+    <footer><span>agewise</span><span>Curiosity, with care.</span></footer>
   </body>
 </html>
