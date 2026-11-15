@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#e9f3dc" />
     <meta
       name="description"
-      content="Take flight in Skybound Sprint, a cheerful side-scrolling game. Flap through the gates, collect sun gems, and beat your best course."
+      content="Take flight in Skybound Sprint, solo or with a friend. Flap through the gates, collect sun gems, and share a two-player course."
     />
     <title>Skybound Sprint — Take flight</title>
     <link rel="stylesheet" href="style.css" />
@@ -30,13 +30,44 @@
           <div>
             <p class="eyebrow">A SIDE-SCROLLING FLIGHT COURSE</p>
             <h1 id="game-heading">Skybound Sprint</h1>
-            <p class="game-description">Flap through the stone gates, scoop up sun gems, and see how far your little explorer can travel.</p>
+            <p class="game-description">Flap through the stone gates, scoop up sun gems, and see how far you and a friend can travel together.</p>
           </div>
           <div class="game-scoreboard" aria-label="Game score">
             <div><span>GEMS</span><strong id="gem-score">0</strong></div>
             <div><span>COURSE</span><strong id="course-score">0</strong></div>
           </div>
         </div>
+
+        <section class="coop-lobby" aria-labelledby="coop-heading">
+          <div class="coop-intro">
+            <h2 id="coop-heading">Fly together</h2>
+            <p>Host a private two-player room or join a friend with their code. You’ll both see the same course and each other’s bird.</p>
+          </div>
+          <label class="username-field" for="player-name">Your username</label>
+          <input id="player-name" class="coop-input" type="text" maxlength="20" autocomplete="nickname" placeholder="Choose a username" />
+          <div class="coop-actions">
+            <button id="coop-host" class="coop-button" type="button">Host a room</button>
+            <form id="coop-join-form" class="join-form">
+              <label class="visually-hidden" for="room-code-input">Room code</label>
+              <input id="room-code-input" class="coop-input room-code-input" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="8-character code" />
+              <button id="coop-join" class="coop-button" type="submit">Join room</button>
+            </form>
+          </div>
+          <div id="coop-room" class="coop-room" hidden>
+            <div class="room-code-display">
+              <span>ROOM CODE</span>
+              <strong id="room-code"></strong>
+              <button id="room-copy" class="copy-button" type="button">Copy code</button>
+            </div>
+            <p id="room-players" class="room-players">Waiting for a second player…</p>
+            <div class="room-buttons">
+              <button id="coop-start" class="coop-button" type="button" disabled>Start with 2 players</button>
+              <button id="coop-leave" class="coop-secondary" type="button">Leave room</button>
+            </div>
+          </div>
+          <p id="coop-status" class="coop-status" role="status" aria-live="polite">Solo flight is ready. For co-op, enter a username and host or join a room.</p>
+          <p class="coop-privacy">Room setup uses PeerJS’s public signaling service. Gameplay data is shared between the two browsers when a direct connection is available. No account is needed.</p>
+        </section>
 
         <div class="game-stage" id="game-stage">
           <canvas
