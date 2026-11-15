@@ -621,11 +621,14 @@
   }
 
   function getUsername() {
-    const username = usernameInput.value.trim().slice(0, 20);
+    let username = usernameInput.value.trim().slice(0, 20);
     if (!username) {
-      roomStatus.textContent = 'Choose a username before hosting or joining a room.';
-      usernameInput.focus();
-      return '';
+      const randomBytes = new Uint8Array(3);
+      window.crypto.getRandomValues(randomBytes);
+      const suffix = Array.from(randomBytes, (value) => ROOM_ALPHABET[value % ROOM_ALPHABET.length]).join('');
+      username = `Sky Flyer ${suffix}`;
+      usernameInput.value = username;
+      roomStatus.textContent = `Using the guest username “${username}”. You can change it before hosting or joining next time.`;
     }
     return username;
   }
