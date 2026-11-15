@@ -9,6 +9,8 @@
   const GATE_SPACING = 320;
   const GRAVITY = 1120;
   const FLAP_VELOCITY = -430;
+  const VOICE_MIN_THRESHOLD = 0.025;
+  const VOICE_REARM_QUIET_SECONDS = 0.045;
 
   const canvas = document.getElementById('game-canvas');
   const context = canvas.getContext('2d');
@@ -17,6 +19,8 @@
   const overlayCopy = document.getElementById('game-overlay-copy');
   const startButton = document.getElementById('game-start');
   const flapButton = document.getElementById('game-flap');
+  const voiceButton = document.getElementById('voice-toggle');
+  const voiceStatus = document.getElementById('voice-status');
   const status = document.getElementById('game-status');
   const gemScore = document.getElementById('gem-score');
   const courseScore = document.getElementById('course-score');
@@ -25,11 +29,25 @@
     status.textContent = 'This browser could not start the game canvas. Try a browser with canvas support.';
     startButton.disabled = true;
     flapButton.disabled = true;
+    voiceButton.disabled = true;
+    voiceStatus.textContent = 'Voice controls are unavailable because the game could not start.';
     return;
   }
 
   let state = 'ready';
   let lastFrame = 0;
+  let animationFrameId = 0;
+  let pageIsLeaving = false;
+  let audioStream = null;
+  let audioContext = null;
+  let audioSource = null;
+  let analyser = null;
+  let audioSamples = null;
+  let ambientFloor = 0.01;
+  let calibrationSamples = [];
+  let calibrationElapsed = 0;
+  let voiceLatched = false;
+  let quietElapsed = 0;
   let elapsed = 0;
   let worldOffset = 0;
   let score = 0;
@@ -299,6 +317,163 @@
     player.velocity = FLAP_VELOCITY;
   }
 
+  function setVoiceStatus(message) {
+    voiceStatus.textContent = message;
+  }
+
+  function releaseMicrophone(updateStatus) {
+    if (audioSource) audioSource.disconnect();
+    audioSource = null;
+    analyser = null;
+    audioSamples = null;
+    if (audioStream) {
+      for (const track of audioStream.getTracks()) track.stop();
+    }
+    audioStream = null;
+    if (audioContext) {
+      const contextToClose = audioContext;
+      audioContext = null;
+      contextToClose.close().catch((error) => {
+        console.error('Could not close the microphone audio context.', error);
+        if (!pageIsLeaving) setVoiceStatus('The microphone stopped, but audio cleanup reported an error. Reload the page if this continues.');
+      });
+    }
+    calibrationSamples = [];
+    calibrationElapsed = 0;
+    voiceLatched = false;
+    quietElapsed = 0;
+    voiceButton.disabled = false;
+    voiceButton.setAttribute('aria-pressed', 'false');
+    voiceButton.textContent = 'Enable microphone';
+    if (updateStatus) {
+      setVoiceStatus('Microphone is off. Audio is analyzed on this device only; it is not recorded or sent.');
+    }
+  }
+
+  function microphoneErrorMessage(error) {
+    if (error && ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error.name)) {
+      return 'Microphone permission was denied. Allow access in your browser settings, then try again.';
+    }
+    if (error && ['NotFoundError', 'DevicesNotFoundError'].includes(error.name)) {
+      return 'No microphone was found. Connect a microphone or use the keyboard controls.';
+    }
+    if (error && ['NotReadableError', 'TrackStartError', 'AbortError'].includes(error.name)) {
+      return 'The microphone is unavailable or in use by another app. Close the other app or use the keyboard controls.';
+    }
+    const detail = error && error.message ? ` (${error.message})` : '';
+    return `Microphone could not start${detail}. You can still flap with Space, W, or ↑.`;
+  }
+
+  async function enableMicrophone() {
+    if (!window.isSecureContext) {
+      setVoiceStatus('Microphone access requires a secure page: open this game over HTTPS or localhost.');
+      return;
+    }
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      setVoiceStatus('This browser does not support microphone access. Use Space, W, or ↑ to flap.');
+      return;
+    }
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextConstructor) {
+      setVoiceStatus('This browser does not support local audio analysis. Use Space, W, or ↑ to flap.');
+      return;
+    }
+
+    voiceButton.disabled = true;
+    voiceButton.textContent = 'Requesting microphone…';
+    setVoiceStatus('Waiting for microphone permission. Audio stays on this device and is never recorded or sent.');
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        video: false
+      });
+      if (pageIsLeaving) {
+        releaseMicrophone(false);
+        return;
+      }
+
+      audioContext = new AudioContextConstructor();
+      await audioContext.resume();
+      if (pageIsLeaving) {
+        releaseMicrophone(false);
+        return;
+      }
+
+      audioSource = audioContext.createMediaStreamSource(audioStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.1;
+      audioSamples = new Float32Array(analyser.fftSize);
+      audioSource.connect(analyser);
+      calibrationSamples = [];
+      calibrationElapsed = 0;
+      ambientFloor = 0.01;
+      voiceLatched = false;
+      quietElapsed = 0;
+      voiceButton.disabled = false;
+      voiceButton.setAttribute('aria-pressed', 'true');
+      voiceButton.textContent = 'Turn microphone off';
+      setVoiceStatus('Microphone on. Calibrating to ambient sound for a moment; make a short sound to flap.');
+    } catch (error) {
+      console.error('Could not start microphone controls.', error);
+      releaseMicrophone(false);
+      setVoiceStatus(microphoneErrorMessage(error));
+    }
+  }
+
+  function detectSound(delta) {
+    if (!analyser || !audioSamples) return;
+    analyser.getFloatTimeDomainData(audioSamples);
+    let sum = 0;
+    for (const sample of audioSamples) {
+      sum += sample * sample;
+    }
+    const level = Math.sqrt(sum / audioSamples.length);
+
+    if (calibrationElapsed < 1) {
+      calibrationElapsed += delta;
+      calibrationSamples.push(level);
+      if (calibrationElapsed >= 1 && calibrationSamples.length > 0) {
+        calibrationSamples.sort((left, right) => left - right);
+        ambientFloor = Math.max(0.005, calibrationSamples[Math.floor(calibrationSamples.length * 0.25)]);
+        calibrationSamples = [];
+        setVoiceStatus('Microphone ready. Make a short sound to flap; audio remains on this device.');
+      }
+      return;
+    }
+
+    const threshold = Math.max(VOICE_MIN_THRESHOLD, ambientFloor * 2.4 + 0.008);
+    const releaseThreshold = threshold * 0.5;
+    if (!voiceLatched && level < threshold) {
+      const smoothing = 1 - Math.exp(-delta * 0.6);
+      ambientFloor += (level - ambientFloor) * smoothing;
+    }
+
+    if (level >= threshold) {
+      if (!voiceLatched) {
+        voiceLatched = true;
+        quietElapsed = 0;
+        flap();
+        setVoiceStatus('Sound detected — flap! Make another short sound whenever you are ready.');
+      }
+      return;
+    }
+
+    if (voiceLatched && level <= releaseThreshold) {
+      quietElapsed += delta;
+      if (quietElapsed >= VOICE_REARM_QUIET_SECONDS) {
+        voiceLatched = false;
+        quietElapsed = 0;
+      }
+    } else if (voiceLatched) {
+      quietElapsed = 0;
+    }
+  }
+
   function intersectsPlayer(x, y, width, height) {
     return PLAYER_X < x + width
       && PLAYER_X + PLAYER_WIDTH > x
@@ -384,9 +559,10 @@
   function frame(timestamp) {
     const delta = lastFrame === 0 ? 0 : Math.min((timestamp - lastFrame) / 1000, 0.032);
     lastFrame = timestamp;
+    detectSound(delta);
     if (state === 'playing') update(delta);
     draw();
-    window.requestAnimationFrame(frame);
+    animationFrameId = window.requestAnimationFrame(frame);
   }
 
   canvas.addEventListener('pointerdown', (event) => {
@@ -401,12 +577,24 @@
   });
   startButton.addEventListener('click', startGame);
   flapButton.addEventListener('click', flap);
+  voiceButton.addEventListener('click', () => {
+    if (audioStream) {
+      releaseMicrophone(true);
+      return;
+    }
+    enableMicrophone();
+  });
   window.addEventListener('resize', resizeCanvas);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) lastFrame = 0;
   });
+  window.addEventListener('pagehide', () => {
+    pageIsLeaving = true;
+    if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+    releaseMicrophone(false);
+  });
 
   resetWorld();
   resizeCanvas();
-  window.requestAnimationFrame(frame);
+  animationFrameId = window.requestAnimationFrame(frame);
 })();

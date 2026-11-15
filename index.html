@@ -44,19 +44,23 @@
             width="960"
             height="500"
             tabindex="0"
-            aria-label="Skybound Sprint game. Press Space, W, or Up Arrow to flap and avoid the gates."
+            aria-label="Skybound Sprint game. Click or tap the course, make a short sound, or press Space, W, or Up Arrow to flap and avoid the gates."
           >Your browser does not support the canvas needed to play Skybound Sprint.</canvas>
           <div class="game-overlay" id="game-overlay">
             <p class="game-overlay-eyebrow">READY TO FLY?</p>
             <h2 id="game-overlay-title">Catch the breeze</h2>
-            <p id="game-overlay-copy">Tap or press Space, W, or ↑ to flap. Fly through the openings and collect the glowing gems.</p>
+            <p id="game-overlay-copy">Click or tap the course, use the Flap button, or enable the microphone and make a short sound. You can also use Space, W, or ↑. Fly through the openings and collect the glowing gems.</p>
             <button id="game-start" class="game-start" type="button">Start flight <span aria-hidden="true">↗</span></button>
           </div>
         </div>
         <div class="game-controls" id="game-controls">
-          <p id="game-status" class="game-status" role="status" aria-live="polite">Your course is ready whenever you are.</p>
-          <button id="game-flap" class="game-flap" type="button" aria-label="Flap">Flap <span aria-hidden="true">↑</span></button>
-          <span class="game-instructions">Space / W / ↑ · tap or click the course to flap</span>
+          <p id="game-status" class="game-status" role="status" aria-live="polite">Your course is ready. Enable the microphone to flap with sound, or use the keyboard.</p>
+          <div class="voice-controls">
+            <button id="game-flap" class="game-flap" type="button">Flap <span aria-hidden="true">↑</span></button>
+            <button id="voice-toggle" class="voice-toggle" type="button" aria-pressed="false">Enable microphone</button>
+            <p id="voice-status" class="voice-status" role="status" aria-live="polite">Microphone is off. When enabled, it calibrates to room noise. Audio is analyzed on this device only; it is not recorded or sent.</p>
+          </div>
+          <span class="game-instructions">Click/tap the course · Flap button · Space / W / ↑</span>
         </div>
       </section>
     </main>
