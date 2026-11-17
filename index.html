@@ -66,7 +66,7 @@
             </div>
           </div>
           <p id="coop-status" class="coop-status" role="status" aria-live="polite">Solo flight is ready. For co-op, enter a username and host or join a room.</p>
-          <p class="coop-privacy">Room setup uses PeerJS’s public signaling service. Gameplay data is shared between the two browsers when a direct connection is available. No account is needed.</p>
+          <p class="coop-privacy">Room setup uses PeerJS’s public signaling service and WebRTC STUN servers. Networks that block direct connections need a site-configured TURN relay through <code>window.SKYBOUND_ICE_SERVERS</code>; use short-lived credentials because browser ICE settings are visible to players. No relay or credentials are bundled, so cross-network connections cannot be guaranteed without a TURN provider. No account is needed.</p>
         </section>
 
         <div class="game-stage" id="game-stage">
