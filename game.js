@@ -22,7 +22,6 @@
   const overlayTitle = document.getElementById('game-overlay-title');
   const overlayCopy = document.getElementById('game-overlay-copy');
   const startButton = document.getElementById('game-start');
-  const flapButton = document.getElementById('game-flap');
   const voiceButton = document.getElementById('voice-toggle');
   const voiceStatus = document.getElementById('voice-status');
   const status = document.getElementById('game-status');
@@ -43,7 +42,6 @@
   if (!context) {
     status.textContent = 'This browser could not start the game canvas. Try a browser with canvas support.';
     startButton.disabled = true;
-    flapButton.disabled = true;
     voiceButton.disabled = true;
     voiceStatus.textContent = 'Voice controls are unavailable because the game could not start.';
     return;
@@ -351,8 +349,8 @@
     startButton.textContent = 'Start flight';
     startButton.disabled = false;
     status.textContent = players.length > 1
-      ? `${players[0].username} and ${players[1].username} are flying together. Flap through each opening!`
-      : 'You are flying. Flap through each opening and watch for the moving course.';
+      ? `${players[0].username} and ${players[1].username} are flying together. Make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening.`
+      : 'Make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening and watch for the moving course.';
     canvas.focus();
     lastFrame = 0;
     updateStartControls();
@@ -996,18 +994,12 @@
     animationFrameId = window.requestAnimationFrame(frame);
   }
 
-  canvas.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    canvas.focus();
-    flap();
-  });
   canvas.addEventListener('keydown', (event) => {
     if (event.repeat || ![' ', 'ArrowUp', 'w', 'W'].includes(event.key)) return;
     event.preventDefault();
     flap();
   });
   startButton.addEventListener('click', () => startGame(false));
-  flapButton.addEventListener('click', flap);
   hostButton.addEventListener('click', hostRoom);
   joinForm.addEventListener('submit', (event) => {
     event.preventDefault();
