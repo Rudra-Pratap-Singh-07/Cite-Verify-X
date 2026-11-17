@@ -349,8 +349,8 @@
     startButton.textContent = 'Start flight';
     startButton.disabled = false;
     status.textContent = players.length > 1
-      ? `${players[0].username} and ${players[1].username} are flying together. Make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening.`
-      : 'Make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening and watch for the moving course.';
+      ? `${players[0].username} and ${players[1].username} are flying together. Tap or click the game, make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening.`
+      : 'Tap or click the game, make a short sound with the microphone on, or press Space, W, or ↑ to flap through each opening and watch for the moving course.';
     canvas.focus();
     lastFrame = 0;
     updateStartControls();
@@ -997,6 +997,10 @@
   canvas.addEventListener('keydown', (event) => {
     if (event.repeat || ![' ', 'ArrowUp', 'w', 'W'].includes(event.key)) return;
     event.preventDefault();
+    flap();
+  });
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
     flap();
   });
   startButton.addEventListener('click', () => startGame(false));
