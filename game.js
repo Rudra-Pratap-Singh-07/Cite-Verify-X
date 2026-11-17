@@ -15,6 +15,17 @@
   const ROOM_CODE_LENGTH = 8;
   const PLAYER_SPACING = 64;
   const NETWORK_SNAPSHOT_MS = 50;
+  const RESPAWN_DELAY = 3;
+  const MULTIPLAYER_GATE_LIMIT = 50;
+  const TURN_ICE_SERVERS = Array.isArray(window.SKYBOUND_ICE_SERVERS)
+    ? window.SKYBOUND_ICE_SERVERS.filter((server) => server
+      && (typeof server.urls === 'string' || Array.isArray(server.urls)))
+    : [];
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    ...TURN_ICE_SERVERS
+  ];
 
   const canvas = document.getElementById('game-canvas');
   const context = canvas.getContext('2d');
@@ -75,6 +86,8 @@
   let worldOffset = 0;
   let score = 0;
   let gems = 0;
+  let gameWon = false;
+  let runId = 0;
   let gates = [];
   let platforms = [];
   let players = [{ y: 228, velocity: 0, rotation: 0, username: 'Player 1' }];
@@ -85,7 +98,7 @@
 
   function makeGate(x, index) {
     const center = 222 + Math.sin(index * 1.43) * 66;
-    return { x, center, gap: gapSize(), scored: false, gemCollected: false };
+    return { x, index, center, gap: gapSize(), scored: false, gemCollected: false };
   }
 
   function resetWorld() {
@@ -93,11 +106,12 @@
     worldOffset = 0;
     score = 0;
     gems = 0;
+    gameWon = false;
     players = roomRole === 'solo'
-      ? [{ y: 228, velocity: 0, rotation: 0, username: localUsername || 'Player 1' }]
+      ? [{ y: 228, velocity: 0, rotation: 0, username: localUsername || 'Player 1', respawnTimer: 0 }]
       : [
-          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? localUsername : otherUsername || 'Player 1' },
-          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? otherUsername || 'Player 2' : localUsername }
+          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? localUsername : otherUsername || 'Player 1', respawnTimer: 0 },
+          { y: 228, velocity: 0, rotation: 0, username: roomRole === 'host' ? otherUsername || 'Player 2' : localUsername, respawnTimer: 0 }
         ];
     gates = [];
     platforms = [];
@@ -219,6 +233,16 @@
     }
   }
 
+  function drawFinishLine(x) {
+    const tileSize = 12;
+    for (let y = 0; y < GROUND_Y; y += tileSize) {
+      for (let column = 0; column < 2; column += 1) {
+        context.fillStyle = (Math.floor(y / tileSize) + column) % 2 === 0 ? '#fffefa' : '#263d3d';
+        context.fillRect(x + column * tileSize, y, tileSize, tileSize);
+      }
+    }
+  }
+
   function drawPlatform(platform) {
     context.fillStyle = '#8f563f';
     context.fillRect(platform.x, platform.y, platform.width, platform.height);
@@ -277,6 +301,7 @@
     const x = birdX + PLAYER_WIDTH / 2;
     const y = bird.y + PLAYER_HEIGHT / 2;
     context.save();
+    if (bird.respawnTimer > 0) context.globalAlpha = 0.35;
     context.translate(x, y);
     context.rotate(bird.rotation);
     context.fillStyle = '#3e5960';
@@ -305,12 +330,24 @@
     context.font = '12px sans-serif';
     context.textAlign = 'center';
     context.fillText(bird.username, x, bird.y - 7);
+    if (bird.respawnTimer > 0) {
+      context.fillStyle = '#263d3d';
+      context.fillText(`Respawning in ${bird.respawnTimer.toFixed(1)}s`, x, bird.y - 21);
+    }
   }
 
   function draw() {
     context.clearRect(0, 0, WIDTH, HEIGHT);
     drawBackground();
-    for (const gate of gates) drawGate(gate);
+    for (const gate of gates) {
+      drawGate(gate);
+      if (roomRole !== 'solo' && gate.index === MULTIPLAYER_GATE_LIMIT - 1) {
+        drawFinishLine(gate.x + GATE_WIDTH + 12);
+      }
+    }
+    for (const bird of players) {
+      if (bird.checkpointGate) drawGate(bird.checkpointGate);
+    }
     for (const platform of platforms) drawPlatform(platform);
     for (const gate of gates) {
       if (!gate.gemCollected) drawGem(gate);
@@ -324,11 +361,14 @@
     courseScore.textContent = String(score);
   }
 
-  function finishGame() {
+  function finishGame(isWin) {
     if (state !== 'playing') return;
     state = 'over';
-    overlayTitle.textContent = 'A breeze to try again';
-    overlayCopy.textContent = `You cleared ${score} gate${score === 1 ? '' : 's'} and collected ${gems} sun gem${gems === 1 ? '' : 's'}. Ready for another flight?`;
+    gameWon = Boolean(isWin);
+    overlayTitle.textContent = gameWon ? 'Finish line!' : 'A breeze to try again';
+    overlayCopy.textContent = gameWon
+      ? `You reached the 50-gate finish line and collected ${gems} sun gem${gems === 1 ? '' : 's'}. You won!`
+      : `You cleared ${score} gate${score === 1 ? '' : 's'} and collected ${gems} sun gem${gems === 1 ? '' : 's'}. Ready for another flight?`;
     startButton.textContent = roomRole === 'guest' ? 'Waiting for host' : 'Fly again';
     startButton.disabled = roomRole === 'guest';
     overlay.hidden = false;
@@ -337,12 +377,18 @@
     if (roomRole === 'host') startButton.focus();
   }
 
-  function startGame(isRemoteStart) {
+  function startGame(isRemoteStart, remoteRunId) {
     if (roomRole === 'guest' && !isRemoteStart) return;
+    if (roomRole === 'guest' && isRemoteStart) {
+      if (!Number.isSafeInteger(remoteRunId)) return;
+      if (remoteRunId < runId || (remoteRunId === runId && state !== 'ready')) return;
+      runId = remoteRunId;
+    }
     if (roomRole === 'host' && (!roomConnection || !roomConnection.open)) {
       roomStatus.textContent = 'Connect the second player before starting a co-op flight.';
       return;
     }
+    if (roomRole === 'host' && !isRemoteStart) runId += 1;
     resetWorld();
     state = 'playing';
     overlay.hidden = true;
@@ -355,7 +401,7 @@
     lastFrame = 0;
     updateStartControls();
     if (roomRole === 'host' && !isRemoteStart) {
-      sendRoomMessage({ type: 'start' });
+      sendRoomMessage({ type: 'start', runId });
       sendGameSnapshot();
     }
   }
@@ -363,6 +409,7 @@
   function flap() {
     if (state !== 'playing') return;
     const playerIndex = roomRole === 'guest' ? 1 : 0;
+    if (!players[playerIndex] || players[playerIndex].respawnTimer > 0) return;
     players[playerIndex].velocity = FLAP_VELOCITY;
     if (roomRole === 'guest') sendRoomMessage({ type: 'flap' });
   }
@@ -537,11 +584,48 @@
       && bird.y + PLAYER_HEIGHT > y;
   }
 
+  function crashPlayer(bird, gate, playerIndex) {
+    if (roomRole === 'solo') {
+      finishGame(false);
+      return;
+    }
+    if (bird.respawnTimer > 0) return;
+    const checkpoint = gate || gates.find((candidate) => candidate.x + GATE_WIDTH >= playerX(playerIndex)) || gates[0];
+    bird.respawnTimer = RESPAWN_DELAY;
+    bird.respawnGate = checkpoint ? checkpoint.index : score;
+    bird.respawnCheckpoint = checkpoint
+      ? { index: checkpoint.index, center: checkpoint.center, gap: checkpoint.gap }
+      : { index: score, center: Math.max(PLAYER_HEIGHT / 2, Math.min(GROUND_Y - PLAYER_HEIGHT / 2, bird.y + PLAYER_HEIGHT / 2)), gap: gapSize() };
+    bird.checkpointGate = null;
+    bird.velocity = 0;
+    bird.rotation = 0;
+    const survivor = players.find((player) => player !== bird && player.respawnTimer <= 0);
+    status.textContent = `${bird.username} crashed at gate ${bird.respawnGate + 1}. Respawning in 3 seconds${survivor ? `; ${survivor.username} keeps flying` : ''}.`;
+  }
+
   function update(delta) {
     elapsed += delta;
     const speed = Math.min(350, 235 + Math.floor(score / 4) * 9);
     worldOffset += speed * delta;
-    for (const bird of players) {
+    for (let index = 0; index < players.length; index += 1) {
+      const bird = players[index];
+      if (bird.respawnTimer > 0) {
+        bird.respawnTimer = Math.max(0, bird.respawnTimer - delta);
+        if (bird.respawnTimer === 0) {
+          const checkpoint = bird.respawnCheckpoint;
+          bird.y = checkpoint.center - PLAYER_HEIGHT / 2;
+          bird.velocity = 0;
+          bird.rotation = 0;
+          bird.checkpointGate = {
+            ...checkpoint,
+            x: playerX(index) + PLAYER_WIDTH + GATE_SPACING / 2,
+            scored: true,
+            gemCollected: true
+          };
+          status.textContent = `${bird.username} respawned at gate ${bird.respawnGate + 1}. Keep flying!`;
+        }
+        continue;
+      }
       bird.velocity += GRAVITY * delta;
       bird.y += bird.velocity * delta;
       bird.rotation = Math.max(-0.45, Math.min(0.7, bird.velocity / 620));
@@ -551,19 +635,21 @@
       gate.x -= speed * delta;
       const gapTop = gate.center - gate.gap / 2;
       const gapBottom = gate.center + gate.gap / 2;
-      const hitGate = players.some((bird, index) => (
-        intersectsPlayer(gate.x, 0, GATE_WIDTH, gapTop, index)
-          || intersectsPlayer(gate.x, gapBottom, GATE_WIDTH, GROUND_Y - gapBottom, index)
-      ));
-      if (hitGate) {
-        finishGame();
-        return;
+      for (let index = 0; index < players.length; index += 1) {
+        const bird = players[index];
+        if (bird.respawnTimer > 0 || bird.checkpointGate) continue;
+        if (intersectsPlayer(gate.x, 0, GATE_WIDTH, gapTop, index)
+          || intersectsPlayer(gate.x, gapBottom, GATE_WIDTH, GROUND_Y - gapBottom, index)) {
+          crashPlayer(bird, gate, index);
+          if (state !== 'playing') return;
+        }
       }
 
       if (!gate.gemCollected) {
         const gemX = gate.x + GATE_WIDTH / 2;
         const gemY = gate.center + Math.sin(elapsed * 3 + gate.x) * 4;
         const collectedByPlayer = players.some((bird, index) => {
+          if (bird.respawnTimer > 0) return false;
           const playerCenterX = playerX(index) + PLAYER_WIDTH / 2;
           const playerCenterY = bird.y + PLAYER_HEIGHT / 2;
           return Math.hypot(gemX - playerCenterX, gemY - playerCenterY) < 27;
@@ -581,26 +667,55 @@
         score += 1;
         updateScore();
         status.textContent = `Gate ${score} cleared. The course is getting quicker.`;
+        if (roomRole !== 'solo' && score >= MULTIPLAYER_GATE_LIMIT) {
+          finishGame(true);
+          return;
+        }
       }
     }
 
     for (const platform of platforms) {
       platform.x -= speed * delta;
-      if (players.some((bird, index) => intersectsPlayer(platform.x, platform.y, platform.width, platform.height, index))) {
-        finishGame();
-        return;
+      for (let index = 0; index < players.length; index += 1) {
+        const bird = players[index];
+        if (bird.respawnTimer <= 0 && !bird.checkpointGate && intersectsPlayer(platform.x, platform.y, platform.width, platform.height, index)) {
+          const checkpoint = gates.find((gate) => gate.x >= platform.x) || gates[gates.length - 1];
+          crashPlayer(bird, checkpoint, index);
+          if (state !== 'playing') return;
+        }
       }
     }
 
-    if (players.some((bird) => bird.y < 0 || bird.y + PLAYER_HEIGHT > GROUND_Y)) {
-      finishGame();
-      return;
+    for (let index = 0; index < players.length; index += 1) {
+      const bird = players[index];
+      if (bird.respawnTimer > 0 || !bird.checkpointGate) continue;
+      const checkpoint = bird.checkpointGate;
+      checkpoint.x -= speed * delta;
+      const gapTop = checkpoint.center - checkpoint.gap / 2;
+      const gapBottom = checkpoint.center + checkpoint.gap / 2;
+      if (intersectsPlayer(checkpoint.x, 0, GATE_WIDTH, gapTop, index)
+        || intersectsPlayer(checkpoint.x, gapBottom, GATE_WIDTH, GROUND_Y - gapBottom, index)) {
+        bird.checkpointGate = null;
+        crashPlayer(bird, checkpoint, index);
+        if (state !== 'playing') return;
+      } else if (checkpoint.x + GATE_WIDTH < playerX(index)) {
+        bird.checkpointGate = null;
+        status.textContent = `${bird.username} cleared their gate ${checkpoint.index + 1} checkpoint. Keep flying!`;
+      }
+    }
+
+    for (let index = 0; index < players.length; index += 1) {
+      const bird = players[index];
+      if (bird.respawnTimer <= 0 && (bird.y < 0 || bird.y + PLAYER_HEIGHT > GROUND_Y)) {
+        crashPlayer(bird, null, index);
+        if (state !== 'playing') return;
+      }
     }
 
     gates = gates.filter((gate) => gate.x + GATE_WIDTH > -10);
     platforms = platforms.filter((platform) => platform.x + platform.width > -10);
 
-    let nextIndex = score + gates.length;
+    let nextIndex = score + gates.filter((gate) => !gate.scored).length;
     let nextX = gates.length ? gates[gates.length - 1].x : WIDTH;
     while (nextX < WIDTH + GATE_SPACING) {
       nextX += GATE_SPACING;
@@ -638,7 +753,13 @@
   }
 
   function createPeer(peerId) {
-    const options = { host: '0.peerjs.com', port: 443, path: '/', secure: true };
+    const options = {
+      host: '0.peerjs.com',
+      port: 443,
+      path: '/',
+      secure: true,
+      config: { iceServers: ICE_SERVERS }
+    };
     return peerId ? new window.Peer(peerId, options) : new window.Peer(undefined, options);
   }
 
@@ -741,7 +862,9 @@
       gems,
       gates,
       platforms,
-      players
+      players,
+      gameWon,
+      runId
     };
   }
 
@@ -751,7 +874,20 @@
 
   function applyGameSnapshot(snapshot) {
     if (!snapshot || !Array.isArray(snapshot.players) || !Array.isArray(snapshot.gates)) return;
-    if (snapshot.gameState === 'playing' && state !== 'playing') startGame(true);
+    if (roomRole === 'guest') {
+      if (!Number.isSafeInteger(snapshot.runId)) return;
+      if (snapshot.runId < runId) return;
+      if (snapshot.runId === runId && state === 'over' && snapshot.gameState === 'playing') return;
+    }
+    if (snapshot.gameState === 'playing' && state !== 'playing') {
+      if (roomRole === 'guest' && Number.isSafeInteger(snapshot.runId)) {
+        startGame(true, snapshot.runId);
+      } else {
+        startGame(true);
+      }
+    } else if (roomRole === 'guest' && Number.isSafeInteger(snapshot.runId) && snapshot.runId > runId) {
+      runId = snapshot.runId;
+    }
     const wasPlaying = state === 'playing';
     elapsed = snapshot.elapsed;
     worldOffset = snapshot.worldOffset;
@@ -763,7 +899,7 @@
     updateScore();
     if (snapshot.gameState === 'over' && (wasPlaying || state !== 'over')) {
       state = 'playing';
-      finishGame();
+      finishGame(snapshot.gameWon);
     } else if (snapshot.gameState !== 'playing' && snapshot.gameState !== 'over') {
       state = snapshot.gameState;
     }
@@ -779,14 +915,14 @@
         roomPlayers.textContent = `${localUsername} and ${otherUsername} are in the room. Start when you’re both ready.`;
         sendRoomMessage({ type: 'welcome', host: localUsername, guest: otherUsername });
         sendGameSnapshot();
-      } else if (message.type === 'flap' && state === 'playing' && players.length > 1) {
+      } else if (message.type === 'flap' && state === 'playing' && players.length > 1 && players[1].respawnTimer <= 0) {
         players[1].velocity = FLAP_VELOCITY;
       }
       return;
     }
 
     if (message.type === 'start') {
-      startGame(true);
+      startGame(true, message.runId);
     } else if (message.type === 'welcome') {
       otherUsername = typeof message.host === 'string' ? message.host.slice(0, 20) : 'Host';
       roomPlayers.textContent = `You are connected with ${otherUsername}. Waiting for the host to start.`;
@@ -807,6 +943,7 @@
     roomRole = 'solo';
     roomCode = '';
     otherUsername = '';
+    runId = 0;
     if (oldConnection && oldConnection.open) oldConnection.close();
     if (oldPeer && !oldPeer.destroyed) oldPeer.destroy();
     setRoomBusy(false);
@@ -985,6 +1122,21 @@
     const delta = lastFrame === 0 ? 0 : Math.min((timestamp - lastFrame) / 1000, 0.032);
     lastFrame = timestamp;
     detectSound(delta);
+    if (roomRole === 'guest' && state === 'playing' && players[1] && players[1].respawnTimer > 0) {
+      const bird = players[1];
+      bird.respawnTimer = Math.max(0, bird.respawnTimer - delta);
+      if (bird.respawnTimer === 0 && bird.respawnCheckpoint) {
+        bird.y = bird.respawnCheckpoint.center - PLAYER_HEIGHT / 2;
+        bird.velocity = 0;
+        bird.rotation = 0;
+        bird.checkpointGate = {
+          ...bird.respawnCheckpoint,
+          x: playerX(1) + PLAYER_WIDTH + GATE_SPACING / 2,
+          scored: true,
+          gemCollected: true
+        };
+      }
+    }
     if (state === 'playing' && roomRole !== 'guest') update(delta);
     if (roomRole === 'host' && roomConnection && roomConnection.open && timestamp - lastSnapshotAt >= NETWORK_SNAPSHOT_MS) {
       lastSnapshotAt = timestamp;
