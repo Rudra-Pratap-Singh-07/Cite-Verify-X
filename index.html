@@ -25,6 +25,7 @@
       </a>
       <nav class="site-nav" aria-label="Main navigation">
         <a href="#workflow">How it works</a>
+        <a href="#research-browser">Find papers</a>
         <a href="#principles">Our approach</a>
       </nav>
       <a class="header-action" href="#workspace"><span class="status-dot"></span> Open workspace <span aria-hidden="true">↗</span></a>
@@ -76,7 +77,7 @@
 
         <div class="prototype-notice" role="note">
           <span class="notice-symbol" aria-hidden="true">i</span>
-          <p><strong>Clear limits, real source lookup.</strong> Text and claim extraction stay in your browser. When you request a publication search, only the citation details are sent to Crossref — not your document or claim. Publication records and abstracts are evidence to review, not automated verdicts.</p>
+          <p><strong>Clear limits, real source lookup.</strong> Text and claim extraction stay in your browser. Searches send only your chosen query to Crossref and PMC — never your uploaded document or claim. PDF links appear only for records in PMC’s open-access collection.</p>
         </div>
 
         <div class="workspace-grid">
@@ -99,7 +100,7 @@
             <textarea id="document-text" class="document-text" rows="5" placeholder="Paste an abstract, a section, or a full document…"></textarea>
             <button id="analyze-button" class="primary-button" type="button"><span>Analyze document</span><span aria-hidden="true">→</span></button>
             <button id="sample-button" class="sample-button" type="button">Load the brief’s illustrative example <span aria-hidden="true">↗</span></button>
-            <p class="privacy-note"><span aria-hidden="true">⌑</span> Document text stays on this device. A source search shares the selected citation details with Crossref.</p>
+            <p class="privacy-note"><span aria-hidden="true">⌑</span> Document text stays on this device. Searches share only your chosen query with scholarly indexes.</p>
           </aside>
 
           <section class="report-card" aria-labelledby="report-title">
@@ -135,6 +136,29 @@
             <div class="report-footnote"><span aria-hidden="true">↳</span> Evidence confidence is not assessed in this prototype; checking the original paper is required before judging support.</div>
           </section>
         </div>
+      </section>
+
+      <section class="research-browser" id="research-browser" aria-labelledby="research-browser-title">
+        <div class="research-browser-heading">
+          <div>
+            <p class="eyebrow">STEP 03 · DISCOVER</p>
+            <h2 id="research-browser-title">Research browser</h2>
+            <p>Search scholarly records and open-access articles. Open a free PDF when one is available, or visit the publication page.</p>
+          </div>
+          <span class="research-browser-mark" aria-hidden="true">⌕</span>
+        </div>
+        <form id="paper-search-form" class="paper-search-form" role="search">
+          <label class="visually-hidden" for="paper-search-query">Search papers by title, author, DOI, or topic</label>
+          <input id="paper-search-query" name="query" type="search" minlength="2" maxlength="240" placeholder="Title, author, DOI, or research topic" autocomplete="off" required />
+          <button id="paper-search-button" class="primary-button" type="submit"><span>Search papers</span><span aria-hidden="true">⌕</span></button>
+        </form>
+        <div class="research-browser-sources" aria-label="Search sources">
+          <span>Crossref · scholarly publication records</span>
+          <span>PMC · free full-text articles</span>
+        </div>
+        <p id="paper-search-status" class="paper-search-status" role="status" aria-live="polite">Search by title, author, DOI, or topic to find papers.</p>
+        <div id="paper-search-results" class="paper-search-results" aria-live="polite"></div>
+        <p class="research-browser-note">PDF links point to articles in PMC’s open-access collection. Other results link to publication records; access may require a subscription. CiteVerify does not bypass paywalls.</p>
       </section>
 
       <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">

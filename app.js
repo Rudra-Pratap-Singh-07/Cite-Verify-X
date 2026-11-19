@@ -2,7 +2,9 @@
   const PDFJS_MODULE_URL = './vendor/pdfjs/build/pdf.min.mjs';
   const PDFJS_ASSET_ROOT = new URL('./vendor/pdfjs/', document.baseURI).href;
   const CROSSREF_API_URL = 'https://api.crossref.org/works';
+  const NCBI_EUTILS_API_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
   const CROSSREF_FIELDS = 'DOI,title,author,published,issued,container-title,abstract,URL,volume,issue,page,publisher,type';
+  const PAPER_SEARCH_LIMIT = 8;
   const MAX_FILE_SIZE = 20 * 1024 * 1024;
   const STATUS_LABELS = {
     'needs-review': 'Needs review',
@@ -36,12 +38,17 @@
   const toast = document.getElementById('toast');
   const exportButton = document.getElementById('export-button');
   const printReport = document.getElementById('print-report');
+  const paperSearchForm = document.getElementById('paper-search-form');
+  const paperSearchQuery = document.getElementById('paper-search-query');
+  const paperSearchStatus = document.getElementById('paper-search-status');
+  const paperSearchResults = document.getElementById('paper-search-results');
 
   let claims = [{ ...sampleClaim }];
   let selectedClaimId = sampleClaim.id;
   let activeDocument = 'Illustrative example';
   let toastTimer = 0;
   let pdfLibraryPromise = null;
+  let paperSearchSequence = 0;
 
   function showToast(message) {
     toast.textContent = message;
@@ -148,6 +155,16 @@
           : citation.lookup?.state === 'error' ? 'Retry Crossref search' : 'Find publication in Crossref';
       searchButton.addEventListener('click', () => searchCitation(citation));
       citationEntry.append(searchButton);
+      const browserButton = document.createElement('button');
+      browserButton.className = 'source-search-button';
+      browserButton.type = 'button';
+      browserButton.textContent = 'Search paper browser';
+      browserButton.addEventListener('click', () => {
+        paperSearchQuery.value = citation.reference || citation.label;
+        searchResearchPapers(paperSearchQuery.value);
+        document.getElementById('research-browser').scrollIntoView({ behavior: 'smooth' });
+      });
+      citationEntry.append(browserButton);
       content.append(citationEntry);
       if (index < citations.length - 1) {
         const divider = document.createElement('div');
@@ -295,6 +312,231 @@
       };
     }
     render();
+  }
+
+  function makePmcPaper(work) {
+    const pmcid = work.articleids?.find((articleId) => articleId.idtype === 'pmcid')?.value || '';
+    const safePmcid = /^PMC\d+$/i.test(pmcid) ? pmcid : '';
+    return {
+      doi: work.articleids?.find((articleId) => articleId.idtype === 'doi')?.value || '',
+      title: work.title || 'Untitled publication',
+      authors: (work.authors || []).slice(0, 3).map((author) => author.name).filter(Boolean).join(', '),
+      year: work.pubdate?.match(/\b\d{4}\b/)?.[0] || '',
+      journal: work.fulljournalname || work.source || '',
+      abstract: '',
+      pdfUrl: safePmcid ? `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(safePmcid)}/pdf/` : '',
+      publicationUrl: safePmcid ? `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(safePmcid)}/` : '',
+      sources: ['PMC Open Access']
+    };
+  }
+
+  function makeCrossrefPaper(work) {
+    return {
+      doi: work.DOI || '',
+      title: work.title?.[0] || 'Untitled publication',
+      authors: getPublicationAuthors(work),
+      year: getPublicationYear(work),
+      journal: work['container-title']?.[0] || '',
+      abstract: getPublicationAbstract(work),
+      pdfUrl: '',
+      publicationUrl: work.DOI ? makeDoiUrl(work.DOI) : '',
+      sources: ['Crossref']
+    };
+  }
+
+  function combinePaperResults(crossrefWorks, pmcWorks) {
+    const papers = new Map();
+    const addPaper = (paper) => {
+      const key = paper.doi
+        ? `doi:${paper.doi.toLowerCase()}`
+        : `title:${paper.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+      const existing = papers.get(key);
+      if (!existing) {
+        papers.set(key, paper);
+        return;
+      }
+      papers.set(key, {
+        ...existing,
+        ...paper,
+        authors: paper.authors || existing.authors,
+        journal: paper.journal || existing.journal,
+        abstract: paper.abstract || existing.abstract,
+        doi: paper.doi || existing.doi,
+        pdfUrl: paper.pdfUrl || existing.pdfUrl,
+        publicationUrl: paper.publicationUrl || existing.publicationUrl,
+        sources: [...new Set([...existing.sources, ...paper.sources])]
+      });
+    };
+    crossrefWorks.forEach((work) => addPaper(makeCrossrefPaper(work)));
+    pmcWorks.forEach((work) => addPaper(makePmcPaper(work)));
+    return [...papers.values()];
+  }
+
+  function addPaperLink(result, label, href, className) {
+    if (!href) return;
+    const link = document.createElement('a');
+    link.className = className;
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = label;
+    result.append(link);
+  }
+
+  function renderPaperSearchResults(papers, accessChecked) {
+    paperSearchResults.replaceChildren();
+    for (const paper of papers) {
+      const result = document.createElement('article');
+      result.className = 'paper-result';
+      const title = document.createElement('h3');
+      title.textContent = paper.title;
+      result.append(title);
+
+      const metadata = [paper.authors, paper.year, paper.journal, paper.doi ? `DOI ${paper.doi}` : '']
+        .filter(Boolean)
+        .join(' · ');
+      if (metadata) {
+        const metadataLine = document.createElement('p');
+        metadataLine.className = 'paper-result-meta';
+        metadataLine.textContent = metadata;
+        result.append(metadataLine);
+      }
+
+      const sourceLine = document.createElement('p');
+      sourceLine.className = 'paper-result-source';
+      sourceLine.textContent = paper.sources.join(' · ');
+      const accessBadge = document.createElement('span');
+      accessBadge.className = paper.pdfUrl ? 'paper-access-badge is-open' : 'paper-access-badge';
+      accessBadge.textContent = paper.pdfUrl
+        ? 'Open-access PDF'
+        : accessChecked ? 'No free PDF found' : 'Access not checked';
+      sourceLine.append(' ', accessBadge);
+      result.append(sourceLine);
+
+      const actions = document.createElement('div');
+      actions.className = 'paper-result-actions';
+      addPaperLink(actions, 'Open free PDF ↗', paper.pdfUrl, 'paper-result-link is-download');
+      addPaperLink(actions, 'Open publication ↗', paper.publicationUrl, 'paper-result-link');
+      result.append(actions);
+
+      if (paper.abstract) {
+        const abstractDetails = document.createElement('details');
+        abstractDetails.className = 'source-abstract';
+        const abstractSummary = document.createElement('summary');
+        abstractSummary.textContent = 'Read abstract';
+        const abstractText = document.createElement('p');
+        abstractText.className = 'source-result-abstract';
+        abstractText.textContent = paper.abstract;
+        abstractDetails.append(abstractSummary, abstractText);
+        result.append(abstractDetails);
+      }
+      paperSearchResults.append(result);
+    }
+  }
+
+  async function fetchScholarlyIndex(url, sourceName, timeoutMs) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`${sourceName} returned ${response.status}.`);
+      return await response.json();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`${sourceName} search timed out.`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  async function searchPmcOpenAccess(query) {
+    const searchParameters = new URLSearchParams({
+      db: 'pmc',
+      term: `(${query}) AND open access[filter]`,
+      retmode: 'json',
+      retmax: String(PAPER_SEARCH_LIMIT),
+      sort: 'relevance'
+    });
+    const search = await fetchScholarlyIndex(`${NCBI_EUTILS_API_URL}/esearch.fcgi?${searchParameters}`, 'NCBI PMC', 15000);
+    const ids = search.esearchresult?.idlist || [];
+    if (!ids.length) return [];
+
+    const summaryParameters = new URLSearchParams({
+      db: 'pmc',
+      id: ids.join(','),
+      retmode: 'json'
+    });
+    const summary = await fetchScholarlyIndex(`${NCBI_EUTILS_API_URL}/esummary.fcgi?${summaryParameters}`, 'NCBI PMC', 15000);
+    return (summary.result?.uids || []).map((id) => summary.result[id]).filter(Boolean);
+  }
+
+  async function searchResearchPapers(rawQuery) {
+    const query = rawQuery.trim();
+    if (query.length < 2) {
+      paperSearchStatus.textContent = 'Enter at least two characters to search.';
+      paperSearchResults.replaceChildren();
+      return;
+    }
+
+    const sequence = ++paperSearchSequence;
+    paperSearchStatus.textContent = `Searching Crossref and PMC for “${query}”…`;
+    paperSearchResults.replaceChildren();
+    const crossrefParameters = new URLSearchParams({
+      'query.bibliographic': query,
+      rows: String(PAPER_SEARCH_LIMIT),
+      select: CROSSREF_FIELDS
+    });
+    let crossrefWorks = [];
+    let pmcWorks = [];
+    let pmcResponded = false;
+    let pmcAvailable = false;
+    let pending = 2;
+    const errors = [];
+    const updateResults = () => {
+      if (sequence !== paperSearchSequence) return;
+      const papers = combinePaperResults(crossrefWorks, pmcWorks);
+      renderPaperSearchResults(papers, pmcResponded && pmcAvailable);
+      if (pending) {
+        paperSearchStatus.textContent = papers.length
+          ? `${papers.length} papers found; checking PMC for open-access PDFs…`
+          : `Searching scholarly indexes for “${query}”…`;
+      } else if (papers.length) {
+        paperSearchStatus.textContent = `${papers.length} paper${papers.length === 1 ? '' : 's'} found for “${query}”.${errors.length ? ` Some results may be missing: ${errors.join(' ')}` : ''}`;
+      } else if (errors.length === 2) {
+        paperSearchStatus.textContent = `Search failed: ${errors.join(' ')} Check your connection and try again.`;
+      } else {
+        paperSearchStatus.textContent = `No papers found for “${query}”.${errors.length ? ` ${errors.join(' ')}` : ''}`;
+      }
+    };
+    const settleIndex = async (request, sourceName, onSuccess) => {
+      try {
+        onSuccess(await request);
+        if (sourceName === 'NCBI PMC') pmcAvailable = true;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `${sourceName} search failed.`);
+      } finally {
+        if (sourceName === 'NCBI PMC') pmcResponded = true;
+        pending -= 1;
+        updateResults();
+      }
+    };
+    await Promise.all([
+      settleIndex(
+        fetchScholarlyIndex(`${CROSSREF_API_URL}?${crossrefParameters}`, 'Crossref', 20000),
+        'Crossref',
+        (data) => { crossrefWorks = data.message?.items || []; }
+      ),
+      settleIndex(
+        searchPmcOpenAccess(query),
+        'NCBI PMC',
+        (data) => { pmcWorks = data; }
+      )
+    ]);
   }
 
   function renderClaimDetail() {
@@ -717,7 +959,7 @@
       </header>
       <div class="print-report-notice"><strong>Review responsibly.</strong> ${escapeText(summary)} Citation matching and publisher abstracts are source references—not proof that a claim is supported. Every verdict needs human review.</div>
       <main>${claimsHtml}</main>
-      <footer>Generated by CiteVerify. Document text is processed in your browser. Source lookups are user-triggered via Crossref. Original paper context and human judgment are required for an academic conclusion.</footer>`;
+      <footer>Generated by CiteVerify. Document text is processed in your browser. Citation lookups use Crossref. The separate paper browser searches Crossref and PMC for open-access copies; its results are not included in this report. Original paper context and human judgment are required for an academic conclusion.</footer>`;
     printReport.hidden = false;
     const previousTitle = document.title;
     document.title = `CiteVerify Verification Report - ${activeDocument}`;
@@ -749,6 +991,10 @@
     analyzeDocument(documentText.value);
   });
   sampleButton.addEventListener('click', loadSample);
+  paperSearchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchResearchPapers(paperSearchQuery.value);
+  });
   statusFilter.addEventListener('change', () => {
     const visibleClaim = claims.find((claim) => statusFilter.value === 'all' || claim.status === statusFilter.value);
     selectedClaimId = visibleClaim ? visibleClaim.id : '';
