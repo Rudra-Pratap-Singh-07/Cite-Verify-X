@@ -774,3 +774,91 @@ body {
   .print-report .review { margin-top: 10pt; color: #735a23; font-size: 9pt; font-weight: 700; }
   .print-report > footer { margin-top: 19pt; padding-top: 9pt; border-top: 1px solid #e7dce5; color: #655b68; font-size: 8pt; }
 }
+
+body { font-size: 15px; }
+.site-nav a { font-size: 13px; }
+.header-action { font-size: 12px; }
+.eyebrow { font-size: 10px; }
+.hero-description { font-size: 16px; }
+.note-copy { font-size: 22px; }
+.note-label { font-size: 10px; }
+.note-caption { font-size: 12px; }
+.section-heading h2, .workflow-heading h2 { font-size: 30px; }
+.section-heading .eyebrow, .card-kicker { font-size: 10px; }
+.principles-intro .eyebrow { font-size: 10px; }
+.document-chip { font-size: 10px; }
+.metric-card p { font-size: 12px; }
+.metric-card strong { font-size: 25px; }
+.metric-detail { font-size: 11px; }
+.prototype-notice p, .upload-description, .report-summary p { font-size: 12px; }
+.card-title-row h3, .report-header h3 { font-size: 20px; }
+.drop-zone strong, .input-label, .primary-button { font-size: 12px; }
+.drop-zone small, .sample-button { font-size: 11px; }
+.upload-divider { font-size: 10px; }
+.document-text { font-size: 12px; }
+.privacy-note { font-size: 10px; }
+.export-button { font-size: 11px; }
+.summary-label, .claim-list-heading { font-size: 10px; }
+.claim-list-item p { font-size: 12px; }
+.claim-list-meta > span:last-child, .status-filter, .status-pill, .empty-filter { font-size: 10px; }
+.detail-label, .confidence-label, .illustrative-label { font-size: 10px; }
+.detail-block-label { font-size: 10px; }
+.citation-box, .evidence-box { font-size: 12px; }
+.evidence-source, .review-state, .report-footnote { font-size: 10px; }
+.review-select-label, .review-select, .save-review-button { font-size: 11px; }
+.source-search-button { font-size: 11px; }
+.source-results-heading, .source-result-meta, .source-result-abstract { font-size: 12px; }
+.source-search-error { font-size: 11px; }
+.workflow-heading > p, .workflow-steps p { font-size: 11px; }
+.workflow-steps strong, .principle-grid h3 { font-size: 12px; }
+.principle-grid p { font-size: 11px; }
+.principles-intro > p:last-child { font-size: 10px; }
+.site-footer p, .site-footer > a:last-child { font-size: 11px; }
+.research-browser-heading h2 { font-size: 30px; }
+.research-browser-heading > div > p:last-child { font-size: 14px; }
+.paper-search-form input { font-size: 15px; }
+.paper-search-status { font-size: 12px; }
+.research-browser-sources span { font-size: 10px; }
+.paper-result h3 { font-size: 16px; }
+.paper-result-meta { font-size: 12px; }
+.paper-result-source { font-size: 11px; }
+.paper-access-badge { font-size: 10px; }
+.paper-result-link { font-size: 11px; }
+.research-browser-note { font-size: 11px; }
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .65s ease, transform .65s cubic-bezier(.2, .7, .2, 1);
+}
+.scroll-reveal.is-visible { opacity: 1; transform: translateY(0); }
+.metric-card.scroll-reveal, .workflow-steps li.scroll-reveal, .principle-grid article.scroll-reveal {
+  transition-delay: 80ms;
+}
+.metric-card.scroll-reveal:nth-child(2),
+.workflow-steps li.scroll-reveal:nth-child(2),
+.principle-grid article.scroll-reveal:nth-child(2) { transition-delay: 160ms; }
+.metric-card.scroll-reveal:nth-child(3),
+.workflow-steps li.scroll-reveal:nth-child(3),
+.principle-grid article.scroll-reveal:nth-child(3) { transition-delay: 240ms; }
+.workflow-steps li.scroll-reveal:nth-child(4) { transition-delay: 320ms; }
+.workflow-steps li.scroll-reveal:nth-child(5) { transition-delay: 400ms; }
+.scroll-reveal:focus-within { opacity: 1; transform: translateY(0); }
+
+@media (max-width: 650px) {
+  .site-nav a { font-size: 11px; }
+  .header-action { font-size: 10px; }
+  .hero-description { font-size: 14px; }
+  .note-copy { font-size: 19px; }
+  .section-heading h2, .workflow-heading h2, .research-browser-heading h2 { font-size: 26px; }
+  .metric-card p { font-size: 10px; }
+  .metric-card strong { font-size: 22px; }
+  .report-summary p, .prototype-notice p, .upload-description { font-size: 11px; }
+  .research-browser-heading > div > p:last-child { font-size: 13px; }
+  .paper-search-form input { font-size: 14px; }
+  .paper-search-results { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal { opacity: 1; transform: none; transition: none; }
+}

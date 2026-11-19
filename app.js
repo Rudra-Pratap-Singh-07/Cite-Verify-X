@@ -290,23 +290,29 @@
     render();
     try {
       const doi = getCitationDoi(citation);
-      const parameters = new URLSearchParams({
-        rows: doi ? '1' : '5',
-        select: CROSSREF_FIELDS
-      });
-      if (doi) parameters.set('filter', `doi:${doi}`);
-      else parameters.set('query.bibliographic', citation.reference || citation.label);
-      const response = await fetch(`${CROSSREF_API_URL}?${parameters.toString()}`, {
+      const parameters = new URLSearchParams({ rows: '5', select: CROSSREF_FIELDS });
+      let url;
+      if (doi) {
+        url = `${CROSSREF_API_URL}/${doi.split('/').map(encodeURIComponent).join('/')}`;
+      } else {
+        parameters.set('query.bibliographic', citation.reference || citation.label);
+        url = `${CROSSREF_API_URL}?${parameters.toString()}`;
+      }
+      const response = await fetch(url, {
         headers: { Accept: 'application/json' }
       });
-      if (!response.ok) throw new Error(`Crossref returned ${response.status}.`);
-      const data = await response.json();
-      citation.lookup = {
-        state: 'loaded',
-        works: data.message?.items || [],
-        exactDoi: Boolean(doi),
-        error: ''
-      };
+      if (doi && response.status === 404) {
+        citation.lookup = { state: 'loaded', works: [], exactDoi: true, error: '' };
+      } else {
+        if (!response.ok) throw new Error(`Crossref returned ${response.status}.`);
+        const data = await response.json();
+        citation.lookup = {
+          state: 'loaded',
+          works: doi ? (data.message ? [data.message] : []) : (data.message?.items || []),
+          exactDoi: Boolean(doi),
+          error: ''
+        };
+      }
     } catch (error) {
       console.error('Could not search Crossref for the citation.', error);
       citation.lookup = {
@@ -1057,6 +1063,27 @@
     window.print();
   }
 
+  function setupScrollReveal() {
+    if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const revealTargets = document.querySelectorAll(
+      '.hero, .workspace-section, .research-browser, .workflow-section, .principles-section, ' +
+      '.metric-card, .upload-card, .report-card, .workflow-steps li, .principle-grid article'
+    );
+    const observer = new IntersectionObserver((entries, currentObserver) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        currentObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -24px 0px' });
+
+    revealTargets.forEach((target) => {
+      target.classList.add('scroll-reveal');
+      observer.observe(target);
+    });
+  }
+
   dropZone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
   for (const eventName of ['dragenter', 'dragover']) {
@@ -1098,4 +1125,5 @@
   exportButton.addEventListener('click', exportReport);
 
   render();
+  setupScrollReveal();
 })();
