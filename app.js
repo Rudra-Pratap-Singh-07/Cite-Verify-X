@@ -40,6 +40,7 @@
   const printReport = document.getElementById('print-report');
   const paperSearchForm = document.getElementById('paper-search-form');
   const paperSearchQuery = document.getElementById('paper-search-query');
+  const paperVoiceButton = document.getElementById('paper-voice-button');
   const paperSearchStatus = document.getElementById('paper-search-status');
   const paperSearchResults = document.getElementById('paper-search-results');
 
@@ -49,6 +50,10 @@
   let toastTimer = 0;
   let pdfLibraryPromise = null;
   let paperSearchSequence = 0;
+  let speechRecognition = null;
+  let speechRecognitionActive = false;
+  let speechRecognitionStarting = false;
+  let speechRecognitionMessage = '';
 
   function showToast(message) {
     toast.textContent = message;
@@ -539,6 +544,87 @@
     ]);
   }
 
+  function setVoiceButtonState(listening) {
+    paperVoiceButton.classList.toggle('is-listening', listening);
+    paperVoiceButton.setAttribute('aria-pressed', String(listening));
+    paperVoiceButton.setAttribute('aria-label', listening ? 'Stop voice search' : 'Search by voice');
+    paperVoiceButton.title = listening ? 'Stop listening' : 'Search by voice';
+  }
+
+  function stopVoiceSearch() {
+    if (!speechRecognition || (!speechRecognitionActive && !speechRecognitionStarting)) return;
+    speechRecognition.stop();
+  }
+
+  function startVoiceSearch() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      paperSearchStatus.textContent = 'Voice search is not supported in this browser. Type your search instead.';
+      return;
+    }
+
+    if (!speechRecognition) {
+      speechRecognition = new SpeechRecognition();
+      speechRecognition.lang = document.documentElement.lang || navigator.language;
+      speechRecognition.continuous = false;
+      speechRecognition.interimResults = false;
+      speechRecognition.maxAlternatives = 1;
+      speechRecognition.onstart = () => {
+        speechRecognitionStarting = false;
+        speechRecognitionActive = true;
+        speechRecognitionMessage = '';
+        setVoiceButtonState(true);
+        paperSearchStatus.textContent = 'Listening… say a title, author, DOI, or topic.';
+      };
+      speechRecognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .filter((result) => result.isFinal)
+          .map((result) => result[0].transcript.trim())
+          .filter(Boolean)
+          .join(' ');
+        if (!transcript) return;
+        const currentQuery = paperSearchQuery.value.trim();
+        paperSearchQuery.value = currentQuery ? `${currentQuery} ${transcript}` : transcript;
+        paperSearchQuery.focus();
+        paperSearchQuery.setSelectionRange(paperSearchQuery.value.length, paperSearchQuery.value.length);
+        speechRecognitionMessage = 'Voice input added. Review the text and press Search papers.';
+      };
+      speechRecognition.onerror = (event) => {
+        const messages = {
+          'not-allowed': 'Microphone access was denied. Allow microphone access in your browser settings to use voice search.',
+          'service-not-allowed': 'The browser speech service is unavailable. Type your search instead.',
+          'no-speech': 'No speech detected. Try again or type your search.',
+          'audio-capture': 'No microphone was found. Connect a microphone or type your search.',
+          network: 'The browser speech service could not be reached. Check your connection or type your search.',
+          aborted: ''
+        };
+        speechRecognitionMessage = messages[event.error] || 'Voice search failed. Try again or type your search.';
+      };
+      speechRecognition.onend = () => {
+        speechRecognitionActive = false;
+        speechRecognitionStarting = false;
+        setVoiceButtonState(false);
+        if (speechRecognitionMessage) {
+          paperSearchStatus.textContent = speechRecognitionMessage;
+          speechRecognitionMessage = '';
+        } else if (paperSearchStatus.textContent.startsWith('Listening')) {
+          paperSearchStatus.textContent = 'Listening stopped. Review your search text before submitting.';
+        }
+      };
+    }
+
+    speechRecognitionMessage = '';
+    speechRecognitionStarting = true;
+    paperSearchStatus.textContent = 'Starting voice search…';
+    try {
+      speechRecognition.start();
+    } catch (error) {
+      speechRecognitionStarting = false;
+      console.error('Could not start voice search.', error);
+      paperSearchStatus.textContent = 'Could not start voice search. Check microphone permission or type your search.';
+    }
+  }
+
   function renderClaimDetail() {
     const claim = getSelectedClaim();
     if (!claim) {
@@ -993,7 +1079,16 @@
   sampleButton.addEventListener('click', loadSample);
   paperSearchForm.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (speechRecognitionActive || speechRecognitionStarting) {
+      stopVoiceSearch();
+      paperSearchStatus.textContent = 'Voice input stopped. Review the search text, then submit it.';
+      return;
+    }
     searchResearchPapers(paperSearchQuery.value);
+  });
+  paperVoiceButton.addEventListener('click', () => {
+    if (speechRecognitionActive || speechRecognitionStarting) stopVoiceSearch();
+    else startVoiceSearch();
   });
   statusFilter.addEventListener('change', () => {
     const visibleClaim = claims.find((claim) => statusFilter.value === 'all' || claim.status === statusFilter.value);
