@@ -620,3 +620,40 @@ body {
   .citation-entry { grid-template-columns: minmax(0, 1fr); }
   .source-search-button { justify-self: start; }
 }
+
+.print-report { display: none; }
+
+@page { margin: 18mm; }
+
+@media print {
+  body { min-width: 0; background: #fff !important; color: #27152f; }
+  body > :not(#print-report) { display: none !important; }
+  #print-report {
+    display: block !important;
+    max-width: 900px;
+    margin: 0 auto;
+    color: #27152f;
+    font: 11pt/1.6 Arial, sans-serif;
+  }
+  #print-report * { box-sizing: border-box; }
+  .print-report-header { padding-bottom: 14pt; border-bottom: 3px solid #d92e86; }
+  .print-report-header p { margin: 4pt 0; color: #655b68; font-size: 9pt; }
+  .print-report-header .print-report-brand { margin: 0 0 4pt; color: #a9349c; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .print-report-header h1 { margin: 0; color: #27152f; font-size: 24pt; }
+  .print-report-notice { margin: 16pt 0; padding: 10pt 12pt; border-left: 4px solid #06aeb5; background: #e9faf6 !important; color: #27152f; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .print-report .claim { margin: 17pt 0; padding: 13pt 0 0; border-top: 1px solid #e7dce5; break-inside: avoid-page; }
+  .print-report .claim-heading { display: flex; align-items: center; justify-content: space-between; gap: 12pt; }
+  .print-report .claim-heading h2 { margin: 0; color: #27152f; font-size: 15pt; }
+  .print-report .claim h3 { margin: 12pt 0 4pt; color: #8d347b; font-size: 9pt; letter-spacing: .06em; text-transform: uppercase; }
+  .print-report .claim h4 { margin: 7pt 0 3pt; color: #27152f; font-size: 11pt; }
+  .print-report .claim p { margin: 5pt 0; overflow-wrap: anywhere; }
+  .print-report .claim blockquote { margin: 10pt 0; padding: 8pt 11pt; border-left: 3px solid #d94791; background: #fff3f9 !important; color: #27152f; font-size: 13pt; font-weight: 700; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .print-report .verdict { padding: 3pt 7pt; border-radius: 20px; background: #fff0d9 !important; color: #8c4c16; font-size: 8pt; font-weight: 700; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .print-report .citation { margin: 7pt 0; padding: 8pt 10pt; border: 1px solid #e7dce5; border-radius: 4pt; break-inside: avoid; }
+  .print-report .citation > p:first-child { margin-top: 0; }
+  .print-report .source { margin-top: 8pt; padding-top: 6pt; border-top: 1px solid #e7dce5; }
+  .print-report a { color: #742d68; overflow-wrap: anywhere; }
+  .print-report .note { color: #655b68; font-size: 9pt; }
+  .print-report .review { margin-top: 10pt; color: #735a23; font-size: 9pt; font-weight: 700; }
+  .print-report > footer { margin-top: 19pt; padding-top: 9pt; border-top: 1px solid #e7dce5; color: #655b68; font-size: 8pt; }
+}
