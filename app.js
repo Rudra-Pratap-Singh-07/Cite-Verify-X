@@ -35,6 +35,7 @@
   const emptyFilter = document.getElementById('empty-filter');
   const toast = document.getElementById('toast');
   const exportButton = document.getElementById('export-button');
+  const printReport = document.getElementById('print-report');
 
   let claims = [{ ...sampleClaim }];
   let selectedClaimId = sampleClaim.id;
@@ -651,30 +652,81 @@
   }
 
   function exportReport() {
-    const report = {
-      product: 'CiteVerify prototype',
-      document: activeDocument,
-      generatedAt: new Date().toISOString(),
-      limitations: 'This prototype extracts text, claim-like statements, and citation references in the browser. It does not retrieve original papers or independently verify scientific support. All verdicts require human review.',
-      claims: claims.map((claim) => ({
-        claim: claim.text,
-        citations: claim.citations,
-        verdict: getStatusLabel(claim.status),
-        humanReviewed: claim.humanReviewed,
-        evidence: claim.evidence || null,
-        evidenceSource: claim.evidenceSource || null
-      }))
-    };
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'citeverify-report.json';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    showToast('Verification report exported as JSON.');
+    const reportDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+    const claimsHtml = claims.length
+      ? claims.map((claim, index) => {
+        const citationsHtml = claim.citations.length
+          ? claim.citations.map((citation) => {
+            const lookupHtml = citation.lookup?.works.map((work) => {
+              const details = [
+                getPublicationAuthors(work),
+                getPublicationYear(work),
+                work['container-title']?.[0]
+              ].filter(Boolean).map(escapeText).join(' · ');
+              const abstract = getPublicationAbstract(work);
+              const doiLink = work.DOI
+                ? `<a href="${escapeText(makeDoiUrl(work.DOI))}">https://doi.org/${escapeText(work.DOI)}</a>`
+                : '';
+              return `<div class="source">
+                <h4>${escapeText(work.title?.[0] || 'Untitled publication')}</h4>
+                ${details ? `<p>${details}</p>` : ''}
+                ${doiLink ? `<p>${doiLink}</p>` : ''}
+                ${abstract ? `<p><strong>Publisher abstract:</strong> ${escapeText(abstract)}</p>` : '<p>No publisher abstract was available in the Crossref record.</p>'}
+              </div>`;
+            }).join('') || '';
+            const searchMessage = citation.lookup?.error
+              ? `<p class="note">${escapeText(citation.lookup.error)}</p>`
+              : citation.lookup?.state === 'loaded' && citation.lookup.works.length === 0
+                ? '<p class="note">Crossref found no record for this citation.</p>'
+                : '';
+            return `<div class="citation">
+              <p><strong>${escapeText(citation.label)}</strong>${citation.reference ? ` — ${escapeText(citation.reference)}` : ''}</p>
+              ${lookupHtml}${searchMessage}
+            </div>`;
+          }).join('')
+          : '<p>No citation was detected next to this claim.</p>';
+        const evidence = claim.evidence || (claim.citations.length
+          ? 'The citation appears in the document, but source support has not been assessed. Compare the claim with the publication’s findings, population, methods, and limitations.'
+          : 'No citation was detected for this statement. Add a source or review whether this claim needs one.');
+        return `<article class="claim">
+          <div class="claim-heading">
+            <h2>Claim ${String(index + 1).padStart(2, '0')}</h2>
+            <span class="verdict">${escapeText(getStatusLabel(claim.status))}</span>
+          </div>
+          <blockquote>${escapeText(claim.text)}</blockquote>
+          <h3>Citation and source</h3>
+          ${citationsHtml}
+          <h3>Evidence and context</h3>
+          <p>${escapeText(evidence)}</p>
+          ${claim.evidenceSource ? `<p class="note">${escapeText(claim.evidenceSource)}</p>` : ''}
+          <p class="review">${claim.humanReviewed
+            ? 'Human reviewed — verdict recorded in this session.'
+            : 'Needs human review — automated extraction is not a scientific verdict.'}</p>
+        </article>`;
+      }).join('')
+      : '<p>No claim-like statements were identified in this document.</p>';
+    const summary = activeDocument === 'Illustrative example'
+      ? 'Illustrative example from the CiteVerify problem statement. This is not an independently verified scientific claim.'
+      : `${claims.length} claim${claims.length === 1 ? '' : 's'} identified. Publication records and abstracts are provided for review; the app does not decide whether a source supports a claim.`;
+    printReport.innerHTML = `
+      <header class="print-report-header">
+        <p class="print-report-brand">CiteVerify · Research integrity</p>
+        <h1>Claim Verification Report</h1>
+        <p><strong>Document:</strong> ${escapeText(activeDocument)}</p>
+        <p><strong>Generated:</strong> ${escapeText(reportDate)}</p>
+      </header>
+      <div class="print-report-notice"><strong>Review responsibly.</strong> ${escapeText(summary)} Citation matching and publisher abstracts are source references—not proof that a claim is supported. Every verdict needs human review.</div>
+      <main>${claimsHtml}</main>
+      <footer>Generated by CiteVerify. Document text is processed in your browser. Source lookups are user-triggered via Crossref. Original paper context and human judgment are required for an academic conclusion.</footer>`;
+    printReport.hidden = false;
+    const previousTitle = document.title;
+    document.title = `CiteVerify Verification Report - ${activeDocument}`;
+    window.addEventListener('afterprint', () => {
+      printReport.hidden = true;
+      document.title = previousTitle;
+    }, { once: true });
+    showToast('Print dialog opened. Choose “Save as PDF” to download the report.');
+    window.print();
   }
 
   dropZone.addEventListener('click', () => fileInput.click());
