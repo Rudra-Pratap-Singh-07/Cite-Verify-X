@@ -515,6 +515,10 @@ body {
   .hero { padding: 35px 20px; }
   .hero-note { background: rgb(27 17 42 / 62%); }
   .principles-section { background: linear-gradient(145deg, #21152f, #492044); }
+  .research-browser { padding: 20px 14px; }
+  .paper-search-form { grid-template-columns: minmax(0, 1fr); }
+  .paper-search-form .primary-button { justify-content: center; }
+  .paper-search-results { grid-template-columns: minmax(0, 1fr); }
 }
 
 .workspace-grid {
@@ -620,6 +624,104 @@ body {
   .citation-entry { grid-template-columns: minmax(0, 1fr); }
   .source-search-button { justify-self: start; }
 }
+
+.research-browser {
+  margin: 20px 0 25px;
+  padding: 28px;
+  border: 1px solid #eccbd9;
+  border-radius: 11px;
+  background: #fffaf6;
+  box-shadow: 0 18px 48px rgb(92 45 84 / 9%);
+}
+.research-browser-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.research-browser-heading .eyebrow { margin-bottom: 5px; color: #9c5e87; }
+.research-browser-heading h2 {
+  margin: 0;
+  color: #301738;
+  font-family: var(--display-font);
+  font-size: 28px;
+  letter-spacing: -.04em;
+}
+.research-browser-heading > div > p:last-child {
+  max-width: 620px;
+  margin: 7px 0 0;
+  color: #725f78;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.research-browser-mark {
+  display: grid;
+  width: 43px;
+  height: 43px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #f1c9de;
+  border-radius: 11px;
+  background: #fff0f7;
+  color: #bd398c;
+  font-size: 27px;
+}
+.paper-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 21px;
+}
+.paper-search-form input {
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid #e8cede;
+  border-radius: 6px;
+  background: #fff;
+  color: #34203a;
+  font: inherit;
+  font-size: 13px;
+}
+.paper-search-form input:focus-visible { outline: 3px solid #db398e; outline-offset: 2px; }
+.paper-search-form .primary-button { width: auto; min-height: 46px; margin: 0; padding: 0 16px; }
+.paper-search-form .primary-button:disabled { cursor: progress; opacity: .7; }
+.research-browser-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.research-browser-sources span {
+  padding: 5px 8px;
+  border: 1px solid #eddae5;
+  border-radius: 20px;
+  background: #fff7fa;
+  color: #806b82;
+  font-size: 9px;
+}
+.paper-search-status { min-height: 20px; margin: 20px 0 9px; color: #6e5d73; font-size: 11px; }
+.paper-search-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.paper-result { min-width: 0; padding: 16px; border: 1px solid #edd9e3; border-radius: 7px; background: #fffdfa; }
+.paper-result h3 { margin: 0; color: #321b3b; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.paper-result-meta { margin: 7px 0 0; color: #76677a; font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.paper-result-source { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 10px 0 0; color: #8b7287; font-size: 9px; }
+.paper-access-badge { padding: 3px 7px; border-radius: 20px; background: #fff0d9; color: #8c4c16; font-size: 8px; font-weight: 700; }
+.paper-access-badge.is-open { background: #dff7f2; color: #087d78; }
+.paper-result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.paper-result-link {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #e5c8dc;
+  border-radius: 5px;
+  background: #fff7fa;
+  color: #883b7c;
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.paper-result-link:hover { border-color: #d54b98; background: #fdeaf4; }
+.paper-result-link.is-download { border-color: #a9ddd3; background: #ecfaf6; color: #087d78; }
+.paper-result-link.is-download:hover { border-color: #39beb6; background: #dff7f2; }
+.paper-result .source-abstract { padding-top: 9px; border-top: 1px solid #f0e2e8; }
+.research-browser-note { margin: 17px 0 0; color: #897a89; font-size: 9px; line-height: 1.6; }
 
 .print-report { display: none; }
 
