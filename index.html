@@ -150,6 +150,9 @@
         <form id="paper-search-form" class="paper-search-form" role="search">
           <label class="visually-hidden" for="paper-search-query">Search papers by title, author, DOI, or topic</label>
           <input id="paper-search-query" name="query" type="search" minlength="2" maxlength="240" placeholder="Title, author, DOI, or research topic" autocomplete="off" required />
+          <button id="paper-voice-button" class="paper-voice-button" type="button" aria-label="Search by voice" aria-pressed="false" title="Search by voice">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
           <button id="paper-search-button" class="primary-button" type="submit"><span>Search papers</span><span aria-hidden="true">⌕</span></button>
         </form>
         <div class="research-browser-sources" aria-label="Search sources">
@@ -158,7 +161,7 @@
         </div>
         <p id="paper-search-status" class="paper-search-status" role="status" aria-live="polite">Search by title, author, DOI, or topic to find papers.</p>
         <div id="paper-search-results" class="paper-search-results" aria-live="polite"></div>
-        <p class="research-browser-note">PDF links point to articles in PMC’s open-access collection. Other results link to publication records; access may require a subscription. CiteVerify does not bypass paywalls.</p>
+        <p class="research-browser-note">Your browser may send microphone audio to its speech service. Review the transcript before searching; audio is not sent to paper indexes. PDF links point to articles in PMC’s open-access collection. Other results link to publication records; access may require a subscription. CiteVerify does not bypass paywalls.</p>
       </section>
 
       <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">
